@@ -1,5 +1,5 @@
-﻿using Greenwaytech.PiholeApiClient.DTO;
-using Greenwaytech.PiholeApiClient.Model;
+﻿using Greenwaytech.PiholeApiClient.Model.Pihole;
+using Greenwaytech.PiholeApiClient.Model.Pihole.DTO;
 using System.IO.Compression;
 using System.Text.Json;
 

@@ -1,4 +1,4 @@
-﻿namespace Greenwaytech.PiholeApiClient.Model;
+﻿namespace Greenwaytech.PiholeApiClient.Model.Pihole;
 
 
 

@@ -1,4 +1,4 @@
-﻿namespace Greenwaytech.PiholeApiClient.Model.Teleport;
+﻿namespace Greenwaytech.PiholeApiClient.Model.Pihole;
 
 public record PiholeTeleportExport
 {

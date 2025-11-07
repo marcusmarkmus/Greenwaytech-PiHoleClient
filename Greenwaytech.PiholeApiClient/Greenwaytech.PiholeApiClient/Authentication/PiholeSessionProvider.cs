@@ -1,7 +1,7 @@
-﻿using Greenwaytech.PiholeApiClient.DTO;
-using Greenwaytech.PiholeApiClient.Extensions;
-using Greenwaytech.PiholeApiClient.Model;
+﻿using Greenwaytech.PiholeApiClient.Extensions;
 using Greenwaytech.PiholeApiClient.Model.Configuration;
+using Greenwaytech.PiholeApiClient.Model.Pihole;
+using Greenwaytech.PiholeApiClient.Model.Pihole.DTO;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Text;

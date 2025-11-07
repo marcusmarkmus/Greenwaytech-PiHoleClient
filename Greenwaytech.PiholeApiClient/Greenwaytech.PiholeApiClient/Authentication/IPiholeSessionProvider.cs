@@ -1,4 +1,4 @@
-﻿using Greenwaytech.PiholeApiClient.Model;
+﻿using Greenwaytech.PiholeApiClient.Model.Pihole;
 
 namespace Greenwaytech.PiholeApiClient.Authentication;
 public interface IPiholeSessionProvider

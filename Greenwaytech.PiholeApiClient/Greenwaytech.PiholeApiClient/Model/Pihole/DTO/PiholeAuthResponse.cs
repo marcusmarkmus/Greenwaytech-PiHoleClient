@@ -1,4 +1,4 @@
-﻿namespace Greenwaytech.PiholeApiClient.DTO;
+﻿namespace Greenwaytech.PiholeApiClient.Model.Pihole.DTO;
 
 public record PiholeAuthResponse
 {

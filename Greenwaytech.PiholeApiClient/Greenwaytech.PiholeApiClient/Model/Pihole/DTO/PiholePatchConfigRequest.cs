@@ -1,7 +1,7 @@
-﻿using Greenwaytech.PiholeApiClient.Model;
+﻿using Greenwaytech.PiholeApiClient.Model.Pihole;
 using System.Text.Json.Serialization;
 
-namespace Greenwaytech.PiholeApiClient.DTO;
+namespace Greenwaytech.PiholeApiClient.Model.Pihole.DTO;
 
 public record PiholePatchConfigRequest
 {
