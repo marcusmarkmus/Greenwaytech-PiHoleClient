@@ -4,6 +4,12 @@ using Greenwaytech.PiholeApiClient.Model.Pihole.DTO;
 namespace Greenwaytech.PiholeApiClient.ApiClient.SubClients.Config;
 public interface IPiholeConfigClient
 {
+    /// <summary>
+    /// Get the current Pi-hole configuration.
+    /// </summary>
+    /// <param name="detailed"></param>
+    /// <param name="cancellationToken"></param>
+    /// <returns></returns>
     Task<PiholeClientApiResponse<PiholeGetConfigResponse>> GetPiholeConfigAsync(bool detailed = false, CancellationToken cancellationToken = default);
 
     /// <summary>
