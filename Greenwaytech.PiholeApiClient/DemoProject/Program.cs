@@ -1,5 +1,6 @@
 ﻿using Greenwaytech.PiholeApiClient;
-using Greenwaytech.PiholeApiClient.Api;
+using Greenwaytech.PiholeApiClient.ApiClient;
+using Greenwaytech.PiholeApiClient.Model.Pihole.DTO;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -25,13 +26,13 @@ var piholeClient = host.Services.GetRequiredService<IPiholeApiClientService>();
 Console.WriteLine($"Pi-hole client resolved: {piholeClient.GetType().Name}");
 
 Console.WriteLine("Pulling Pi-hole teleport file...");
-var result = await piholeClient.PullPiholeTeleportFile();
-Console.WriteLine($"Received teleport file with content type: {result.Contentype}, size: {result.Data?.Length ?? 0} bytes");
+var result = await piholeClient.Teleport.PullPiholeTeleportFile();
+Console.WriteLine($"Received teleport file with content type: {result.Data?.Contentype}, size: {result.Data?.Data?.Length ?? 0} bytes");
 var filePath = Path.Combine(Directory.GetCurrentDirectory(), "pihole_teleport.zip");
 Console.WriteLine($"Save file to {filePath}? (y/N)?");
 if (Console.ReadLine()?.Trim().ToLower() == "y")
 {
-    await File.WriteAllBytesAsync(filePath, result.Data ?? Array.Empty<byte>());
+    await File.WriteAllBytesAsync(filePath, result.Data?.Data ?? []);
     Console.WriteLine("File saved.");
 }
 else
@@ -39,5 +40,39 @@ else
     Console.WriteLine("File not saved.");
 }
 
-await host.RunAsync();
+Console.WriteLine("Attempting to patch Pi-hole configuration...");
+var patchConfig = new PiholePatchConfigRequest
+{
+    Config = new Greenwaytech.PiholeApiClient.Model.Pihole.PiholeConfigModel
+    {
+        dns = new Greenwaytech.PiholeApiClient.Model.Pihole.Dns
+        {
+            hosts = ["10.10.10.2 test.test"]
+        }
+    }
+};
+
+
+var patchResult = await piholeClient.Config.PatchPiholeConfigAsync(patchConfig);
+
+Console.WriteLine("Getting Pi-hole configuration...");
+var configResult = await piholeClient.Config.GetPiholeConfigAsync(detailed: true);
+if (configResult.IsSuccess && configResult.Data is not null)
+{
+    Console.WriteLine("Successfully retrieved Pi-hole configuration.");
+    Console.WriteLine("Print configuration to console? (y/N)?");
+    if (Console.ReadLine()?.Trim().ToLower() != "y")
+    {
+        return;
+    }
+    Console.WriteLine("Pi-hole Configuration:");
+    Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(configResult.Data, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+
+}
+else
+{
+    Console.WriteLine($"Failed to get configuration: {configResult.ErrorMessage}");
+}
+
+//await host.RunAsync();
 

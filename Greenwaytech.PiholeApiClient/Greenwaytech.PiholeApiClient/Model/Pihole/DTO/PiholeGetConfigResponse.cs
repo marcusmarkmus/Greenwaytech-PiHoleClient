@@ -1,5 +1,4 @@
-﻿using Greenwaytech.PiholeApiClient.Model.Pihole;
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 
 namespace Greenwaytech.PiholeApiClient.Model.Pihole.DTO;
 

@@ -1,6 +1,5 @@
-﻿namespace Greenwaytech.PiholeApiClient.Model.Pihole;
-
-
+﻿
+namespace Greenwaytech.PiholeApiClient.Model.Pihole;
 
 public record PiholeConfigModel
 {
@@ -30,7 +29,7 @@ public record Dns
     public string[] hosts { get; set; }
     public bool domainNeeded { get; set; }
     public bool expandHosts { get; set; }
-    public string domain { get; set; }
+    public DnsDomain domain { get; set; }
     public bool bogusPriv { get; set; }
     public bool dnssec { get; set; }
     public string _interface { get; set; }
@@ -45,6 +44,12 @@ public record Dns
     public Specialdomains specialDomains { get; set; }
     public Reply reply { get; set; }
     public Ratelimit rateLimit { get; set; }
+}
+
+public record DnsDomain
+{
+    public string name { get; set; }
+    public bool local { get; set; }
 }
 
 public record Cache

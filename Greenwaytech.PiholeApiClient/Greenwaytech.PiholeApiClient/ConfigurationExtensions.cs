@@ -1,4 +1,4 @@
-﻿using Greenwaytech.PiholeApiClient.Api;
+﻿using Greenwaytech.PiholeApiClient.ApiClient;
 using Greenwaytech.PiholeApiClient.Authentication;
 using Greenwaytech.PiholeApiClient.Model.Configuration;
 using Microsoft.Extensions.DependencyInjection;
