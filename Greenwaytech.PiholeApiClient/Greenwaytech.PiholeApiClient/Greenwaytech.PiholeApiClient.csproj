@@ -8,7 +8,7 @@
 
 	<PropertyGroup>
 		<PackageId>Greenwaytech.PiholeApiClient</PackageId>
-		<Version>0.0.1-alpha</Version>
+		<Version>0.0.3-alpha</Version>
 		<Authors>Marcus Greenway</Authors>
 		<Description>Dotnet Client for Pi-hole API</Description>
 		<Copyright>Greenwaytech 2026</Copyright>
@@ -32,9 +32,11 @@
 		<GeneratePackageOnBuild>True</GeneratePackageOnBuild>
 		<Title>PiholeApiClient</Title>
 		<PackageProjectUrl>https://github.com/marcusmarkmus/Greenwaytech-PiHoleClient#</PackageProjectUrl>
+		<ApplicationIcon>piholelogo.ico</ApplicationIcon>
 	</PropertyGroup>
 
 	<ItemGroup>
+	  <Content Include="piholelogo.ico" />
 	  <Content Include="README.md">
 	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 	  </Content>
