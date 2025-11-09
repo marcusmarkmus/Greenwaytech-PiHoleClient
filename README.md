@@ -35,3 +35,10 @@ var host = Host.CreateDefaultBuilder(args)
 var piholeClient = host.Services.GetRequiredService<IPiholeApiClientService>();
 
 ```
+
+# Features
+## Teleport
+Pull and push Teleport data to/from Pi-hole instances.
+
+## Config
+Pull and push configuration settings to/from Pi-hole instances.
