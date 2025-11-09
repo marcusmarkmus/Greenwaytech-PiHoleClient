@@ -5,6 +5,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
+
+//Example usage of the Pi-hole API client with dependency injection and configuration
 var host = Host.CreateDefaultBuilder(args)
     .ConfigureAppConfiguration((context, config) =>
     {
@@ -41,6 +43,9 @@ else
 {
     Console.WriteLine("File not saved.");
 }
+
+// Overwrite the file with invalid/corrupt data for testing
+await File.WriteAllBytesAsync(filePath, new byte[] { 0x00, 0xFF, 0xDE, 0xAD, 0xBE, 0xEF });
 
 if (fileSaved)
 {
@@ -116,3 +121,16 @@ else
 
 //await host.RunAsync();
 
+//Example in a non-DI context: //TODO:
+var configuration = new ConfigurationBuilder()
+    .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+    .Build();
+var piholeSection = configuration.GetSection("PiHoleInstanceApiConfig");
+var piholeConfig = new Greenwaytech.PiholeApiClient.Model.Configuration.PiHoleInstanceApiConfig
+{
+    ApiBaseUrl = piholeSection.GetValue<string>("ApiBaseUrl") ?? throw new ArgumentNullException(nameof(piholeSection)),
+    ApiKey = piholeSection.GetValue<string>("ApiKey") ?? throw new ArgumentNullException(nameof(piholeSection))
+};
+using var httpClient = new HttpClient { BaseAddress = new Uri(piholeConfig.ApiBaseUrl) };
+var piholeApiClient = new PiholeApiClientService(httpClient, null!, Microsoft.Extensions.Options.Options.Create(piholeConfig));
+Console.WriteLine($"Pi-hole client created without DI: {piholeApiClient.GetType().Name}");

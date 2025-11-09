@@ -16,7 +16,7 @@ public interface ITeleportClient
     /// NOTE: Be careful if using this to sync settings between Pi-hole instances, 
     /// as it will overwrite settings that in most cases should be different between instances. 
     /// Use <see cref="PiholeTeleportImportSettings"/> to limit what is imported.
-    /// Use the Config client for syncing configuration between replicas.
+    /// Alternatively, use the Config client for syncing configuration between replicas.
     /// </summary>
     Task<PiholeClientApiResponse<PiholeTeleportImportResponse>> PushPiholeTeleportFile(PiholeTeleportImportRequest importRequest, CancellationToken cancellationToken = default);
 }

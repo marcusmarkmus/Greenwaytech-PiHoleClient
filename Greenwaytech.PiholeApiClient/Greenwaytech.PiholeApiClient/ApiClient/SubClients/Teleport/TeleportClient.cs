@@ -79,7 +79,8 @@ public class TeleportClient : ITeleportClient
         if (!response.IsSuccessStatusCode)
         {
             _logger.LogError("Failed to push Pi-hole teleport file");
-            apiResponse.ErrorMessage = "Failed to push Pi-hole teleport file - " + responseContent;
+            apiResponse.ErrorMessage = "Failed to push Pi-hole teleport file - " + responseData?.Error?.Message;
+            apiResponse.Data = responseData;
             return apiResponse;
         }
 

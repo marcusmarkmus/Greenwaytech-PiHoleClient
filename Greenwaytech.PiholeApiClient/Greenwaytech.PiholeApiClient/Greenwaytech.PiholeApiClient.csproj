@@ -8,13 +8,17 @@
 
 	<PropertyGroup>
 		<PackageId>Greenwaytech.PiholeApiClient</PackageId>
-		<Version>0.0.1</Version>
+		<Version>0.0.1-alpha</Version>
 		<Authors>Marcus Greenway</Authors>
 		<Description>Dotnet Client for Pi-hole API</Description>
+		<Copyright>Greenwaytech 2026</Copyright>
 		<PackageTags>Pihole;ApiClient</PackageTags>
 		<RepositoryUrl>https://github.com/marcusmarkmus/Greenwaytech-PiHoleClient</RepositoryUrl>
 	</PropertyGroup>
 
+  <!-- SPDX license expression -->
+	<!--<PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>-->
+	
 	<PropertyGroup>
 		<!-- Generate the XML doc file -->
 		<GenerateDocumentationFile>true</GenerateDocumentationFile>
@@ -25,15 +29,27 @@
 
 	<PropertyGroup>
 		<PackageReadmeFile>README.md</PackageReadmeFile>
+		<GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+		<Title>PiholeApiClient</Title>
+		<PackageProjectUrl>https://github.com/marcusmarkmus/Greenwaytech-PiHoleClient#</PackageProjectUrl>
 	</PropertyGroup>
 
 	<ItemGroup>
-		<None Include="README.md" Pack="true" PackagePath="/" />
+	  <Content Include="README.md">
+	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	  </Content>
 	</ItemGroup>
 
 	<ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Http" Version="9.0.10" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.10" />
   </ItemGroup>
+
+	<ItemGroup>
+	  <None Update="README.md">
+	    <Pack>True</Pack>
+	    <PackagePath>\</PackagePath>
+	  </None>
+	</ItemGroup>
 
 </Project>
