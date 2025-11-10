@@ -1,4 +1,4 @@
-name: Build and Test
+name: Build and Test PiholeClientProject
 
 on:
   push:
@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       
-      SOLUTION_PATH: "./Greenwaytech.PiholeApiClient.slnx"
+      SOLUTION_PATH: "./Greenwaytech.PiholeApiClient/Greenwaytech.PiholeApiClient.csproj"
       CONFIGURATION: "Release"
       TEST_RESULTS_DIR: "TestResults"
     steps:
