@@ -1,4 +1,4 @@
-name: Build and Test PiholeClientProject
+﻿name: Build and Test PiholeClientProject
 
 on:
   push:
@@ -105,5 +105,21 @@ jobs:
           echo "Remote latest:  ${{ steps.compare.outputs.remote_latest }}"
           echo "Should publish: ${{ steps.compare.outputs.should_publish }}"
 
+      - name: Pack
+        if: steps.compare.outputs.should_publish == 'true'
+        run: |
+          dotnet pack "$PROJECT_PATH" -c "$CONFIGURATION" -o ./artifacts  -p:ContinuousIntegrationBuild=true
 
 
+      - name: Push to nuget.org
+        if: steps.compare.outputs.should_publish == 'true'
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+         if [[ -z "${NUGET_API_KEY:-}" ]]; then
+           echo "❌ NUGET_API_KEY secret is missing"; exit 1
+         fi
+         dotnet nuget push "./artifacts/*.nupkg" \
+         --source "${{ env.NUGET_SOURCE_URL }}" \
+         --api-key "$NUGET_API_KEY" \
+         --skip-duplicate

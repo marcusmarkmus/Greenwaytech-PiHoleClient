@@ -18,7 +18,7 @@ public interface IPiholeConfigClient
     /// !IMPORTANT!: Lists/arrays provided in the config will REPLACE existing lists/arrays, not append to them.
     /// Do a GetPiholeConfigAsync first to retrieve existing lists/arrays if you want to append to them.
     /// </summary>
-    /// <param name="config">Pihole Config object.</param>
+    /// <param name="patchRequest"></param>
     /// <param name="restartServices">Restart FTL after a change </param>
     /// <param name="cancellationToken"></param>
     /// <returns></returns>
