@@ -36,6 +36,11 @@ var piholeClient = host.Services.GetRequiredService<IPiholeApiClientService>();
 
 ```
 
+Non-Di example usage:
+```csharp
+//todo!
+```
+
 # Features
 ## Teleport
 Pull and push Teleport data to/from Pi-hole instances.
