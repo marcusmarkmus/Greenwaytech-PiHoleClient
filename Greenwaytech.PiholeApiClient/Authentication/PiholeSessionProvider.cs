@@ -41,15 +41,15 @@ public class PiholeSessionProvider : IPiholeSessionProvider
         if (!response.IsSuccessStatusCode)
         {
             _logger.LogError("Failed to authenticate with Pi-hole API");
-            return new() { valid = false, PiholeAuthResponseTimeStamp = DateTimeOffset.UtcNow };
+            return new() { Valid = false, PiholeAuthResponseTimeStamp = DateTimeOffset.UtcNow };
         }
 
         var json = await response.Content.ReadAsStringAsync();
         var authResponse = JsonSerializer.Deserialize<PiholeAuthResponse>(json);
-        if (authResponse?.session == null)
+        if (authResponse?.Session == null)
         {
             _logger.LogError("Invalid session response from Pi-hole");
-            return new() { valid = false, PiholeAuthResponseTimeStamp = DateTimeOffset.UtcNow };
+            return new() { Valid = false, PiholeAuthResponseTimeStamp = DateTimeOffset.UtcNow };
         }
 
         _cachedSession = authResponse.GetPiholeApiSession();

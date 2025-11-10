@@ -64,20 +64,36 @@ jobs:
             --logger "trx;LogFileName=test_results.trx" \
             --results-directory "$TEST_RESULTS_DIR"
 
+
+      # Optional: Convert Cobertura to HTML (nice artifact to browse)
+      - name: Generate HTML coverage report
+        shell: bash
+        run: |
+          dotnet tool update -g dotnet-reportgenerator-globaltool
+          reportgenerator \
+            -reports:"$TEST_RESULTS_DIR/**/coverage.cobertura.xml" \
+            -targetdir:"$TEST_RESULTS_DIR/CoverageReport" \
+            -reporttypes:"HtmlInline_AzurePipelines;Cobertura"
+        env:
+          PATH: $HOME/.dotnet/tools:$PATH
+
       - name: Upload Test & Coverage Artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-and-coverage
+          name: test-and-coverage-${{ matrix.os }}-${{ matrix.dotnet }}
           path: |
             ${{ env.TEST_RESULTS_DIR }}/**/*.trx
             ${{ env.TEST_RESULTS_DIR }}/**/coverage.cobertura.xml
+            ${{ env.TEST_RESULTS_DIR }}/CoverageReport/**/*
           if-no-files-found: warn
           retention-days: 7
-      - name: Publish Test Results
+
+      - name: Publish Test Results (Checks tab)
         if: always()
         uses: EnricoMi/publish-unit-test-result-action@v2
         with:
           files: ${{ env.TEST_RESULTS_DIR }}/**/*.trx
-          check_name: 'Test Results'
+          check_name: 'Test Results (${{ matrix.os }} / .NET ${{ matrix.dotnet }})'
+
 

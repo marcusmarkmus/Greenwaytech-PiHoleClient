@@ -25,12 +25,12 @@ public static class PiholeExtensions
     {
         return new PiholeApiSession
         {
-            valid = piholeAuthResponse.session.valid,
-            totp = piholeAuthResponse.session.totp,
-            sid = piholeAuthResponse.session.sid,
-            csrf = piholeAuthResponse.session.csrf,
-            validity = piholeAuthResponse.session.validity,
-            message = piholeAuthResponse.session.message,
+            Valid = piholeAuthResponse.Session?.Valid,
+            Totp = piholeAuthResponse.Session?.Totp,
+            Sid = piholeAuthResponse.Session?.Sid,
+            Csrf = piholeAuthResponse.Session?.Csrf,
+            Validity = piholeAuthResponse.Session?.Validity,
+            Message = piholeAuthResponse.Session?.Message,
             PiholeAuthResponseTimeStamp = DateTimeOffset.UtcNow
         };
     }

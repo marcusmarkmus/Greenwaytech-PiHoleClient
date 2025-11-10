@@ -1,16 +1,24 @@
-﻿namespace Greenwaytech.PiholeApiClient.Model.Pihole;
+﻿using System.Text.Json.Serialization;
+
+namespace Greenwaytech.PiholeApiClient.Model.Pihole;
 
 public record PiholeApiSession
 {
-    public bool valid { get; set; }
-    public bool totp { get; set; }
-    public string sid { get; set; }
-    public string csrf { get; set; }
-    public int validity { get; set; }
-    public string message { get; set; }
+    [JsonPropertyName("valid")]
+    public bool? Valid { get; set; }
+    [JsonPropertyName("totp")]
+    public bool? Totp { get; set; }
+    [JsonPropertyName("sid")]
+    public string? Sid { get; set; }
+    [JsonPropertyName("csrf")]
+    public string? Csrf { get; set; }
+    [JsonPropertyName("validity")]
+    public int? Validity { get; set; }
+    [JsonPropertyName("message")]
+    public string? Message { get; set; }
     public required DateTimeOffset PiholeAuthResponseTimeStamp { get; set; }
 
     public bool IsValid() 
-        => valid && !string.IsNullOrEmpty(sid) && validity > 0 && PiholeAuthResponseTimeStamp.AddSeconds(validity) > DateTimeOffset.UtcNow;
+        => Valid == true && !string.IsNullOrEmpty(Sid) && Validity > 0 && PiholeAuthResponseTimeStamp.AddSeconds(Validity ?? 0) > DateTimeOffset.UtcNow;
 }
 

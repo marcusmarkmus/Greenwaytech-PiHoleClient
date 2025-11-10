@@ -1,15 +1,22 @@
-﻿namespace Greenwaytech.PiholeApiClient.Model.Pihole.DTO;
+﻿using System.Text.Json.Serialization;
+
+namespace Greenwaytech.PiholeApiClient.Model.Pihole.DTO;
 
 public record PiholeApiErrorResponse
 {
-    public Error error { get; set; }
-    public float took { get; set; }
+    [JsonPropertyName("error")]
+    public Error? Error { get; set; }
+    [JsonPropertyName("took")]
+    public float? Took { get; set; }
 }
 
 public class Error
 {
-    public string key { get; set; }
-    public string message { get; set; }
-    public object hint { get; set; }
+    [JsonPropertyName("key")]
+    public string? Key { get; set; }
+    [JsonPropertyName("message")]
+    public string? Message { get; set; }
+    [JsonPropertyName("hint")]
+    public string? Hint { get; set; }
 }
 

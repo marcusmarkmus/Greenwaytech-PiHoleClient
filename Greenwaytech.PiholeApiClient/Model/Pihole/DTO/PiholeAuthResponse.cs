@@ -1,17 +1,27 @@
-﻿namespace Greenwaytech.PiholeApiClient.Model.Pihole.DTO;
+﻿using System.Text.Json.Serialization;
+
+namespace Greenwaytech.PiholeApiClient.Model.Pihole.DTO;
 
 public record PiholeAuthResponse
 {
-    public AuthSession session { get; init; }
-    public float took { get; init; }
+    [JsonPropertyName("session")]
+    public AuthSession? Session { get; init; }
+    [JsonPropertyName("took")]
+    public float? Took { get; init; }
 }
 
 public record AuthSession
 {
-    public bool valid { get; init; }
-    public bool totp { get; init; }
-    public string sid { get; init; }
-    public string csrf { get; init; }
-    public int validity { get; init; }
-    public string message { get; init; }
+    [JsonPropertyName("valid")]
+    public bool? Valid { get; init; }
+    [JsonPropertyName("totp")]
+    public bool? Totp { get; init; }
+    [JsonPropertyName("sid")]
+    public string? Sid { get; init; }
+    [JsonPropertyName("csrf")]
+    public string? Csrf { get; init; }
+    [JsonPropertyName("validity")]
+    public int? Validity { get; init; }
+    [JsonPropertyName("message")]
+    public string? Message { get; init; }
 }

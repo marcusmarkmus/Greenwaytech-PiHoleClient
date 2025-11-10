@@ -1,4 +1,5 @@
-﻿using Greenwaytech.PiholeApiClient;
+﻿using DemoProject;
+using Greenwaytech.PiholeApiClient;
 using Greenwaytech.PiholeApiClient.ApiClient;
 using Greenwaytech.PiholeApiClient.Model.Pihole.DTO;
 using Microsoft.Extensions.Configuration;
@@ -24,8 +25,8 @@ var host = Host.CreateDefaultBuilder(args)
         services.AddPiholeApiClient(options =>
         {
             var section = context.Configuration.GetSection("PiHoleInstanceApiConfig");
-            options.ApiBaseUrl = section.GetValue<string>("ApiBaseUrl") ?? throw new ArgumentNullException(nameof(options.ApiBaseUrl));
-            options.ApiKey = section.GetValue<string>("ApiKey") ?? throw new ArgumentNullException(nameof(options.ApiKey));
+            options.ApiBaseUrl = section.GetValue<string>("ApiBaseUrl") ?? throw new Exception(nameof(options.ApiBaseUrl)+ " not found in configsettings");
+            options.ApiKey = section.GetValue<string>("ApiKey") ?? throw new Exception(nameof(options.ApiKey)+ " not found in configsettings");
         });
     })
     .Build();
@@ -51,7 +52,7 @@ else
 }
 
 // Overwrite the file with invalid/corrupt data for testing
-await File.WriteAllBytesAsync(filePath, new byte[] { 0x00, 0xFF, 0xDE, 0xAD, 0xBE, 0xEF });
+await File.WriteAllBytesAsync(filePath, [0x00, 0xFF, 0xDE, 0xAD, 0xBE, 0xEF]);
 
 if (fileSaved)
 {
@@ -79,7 +80,7 @@ if (fileSaved)
     if (pushResult.IsSuccess && pushResult.Data is not null)
     {
         Console.WriteLine("Successfully pushed teleport file.");
-        Console.WriteLine($"Imported config: {string.Join(",", pushResult.Data.Files)} in {pushResult.Data.Took} seconds");
+        Console.WriteLine($"Imported config: {string.Join(",", pushResult?.Data?.Files ?? [])} in {pushResult?.Data.Took} seconds");
     }
     else
     {
@@ -96,9 +97,9 @@ var patchConfig = new PiholePatchConfigRequest
 {
     Config = new Greenwaytech.PiholeApiClient.Model.Pihole.PiholeConfigModel
     {
-        dns = new Greenwaytech.PiholeApiClient.Model.Pihole.Dns
+        Dns = new Greenwaytech.PiholeApiClient.Model.Pihole.Dns
         {
-            hosts = ["10.10.10.2 test.test"]
+            Hosts = ["10.10.10.2 test.test"]
         }
     }
 };
@@ -117,7 +118,7 @@ if (configResult.IsSuccess && configResult.Data is not null)
         return;
     }
     Console.WriteLine("Pi-hole Configuration:");
-    Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(configResult.Data, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+    Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(configResult.Data, Constants.SerializerSettings));
 
 }
 else
@@ -134,8 +135,8 @@ var configuration = new ConfigurationBuilder()
 var piholeSection = configuration.GetSection("PiHoleInstanceApiConfig");
 var piholeConfig = new Greenwaytech.PiholeApiClient.Model.Configuration.PiHoleInstanceApiConfig
 {
-    ApiBaseUrl = piholeSection.GetValue<string>("ApiBaseUrl") ?? throw new ArgumentNullException(nameof(piholeSection)),
-    ApiKey = piholeSection.GetValue<string>("ApiKey") ?? throw new ArgumentNullException(nameof(piholeSection))
+    ApiBaseUrl = piholeSection.GetValue<string>("ApiBaseUrl") ?? throw new Exception(nameof(piholeSection)+" was not found in settings"),
+    ApiKey = piholeSection.GetValue<string>("ApiKey") ?? throw new Exception(nameof(piholeSection)+" was not found in settings")
 };
 using var httpClient = new HttpClient { BaseAddress = new Uri(piholeConfig.ApiBaseUrl) };
 var piholeApiClient = new PiholeApiClientService(httpClient, null!, Microsoft.Extensions.Options.Options.Create(piholeConfig));

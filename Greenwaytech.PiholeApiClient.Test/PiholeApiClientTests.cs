@@ -68,7 +68,7 @@ public class PiholeApiClientTests
         Assert.That(result.IsSuccess, Is.True, result.ErrorMessage);
         var config = result.Data;
         Assert.That(config?.Config, Is.Not.Null);
-        Assert.That(config?.Config?.database, Is.Not.Null); //Should never be null on fresh container?
+        Assert.That(config?.Config?.Database, Is.Not.Null); //Should never be null on fresh container?
 
     }
 
