@@ -20,7 +20,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-and-test:
+  build-test-and-publish:
     runs-on: ubuntu-latest
     env:
       PROJECT_PATH: "./Greenwaytech.PiholeApiClient/Greenwaytech.PiholeApiClient.csproj"
