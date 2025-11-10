@@ -65,17 +65,12 @@ jobs:
             --results-directory "$TEST_RESULTS_DIR"
 
 
-      # Optional: Convert Cobertura to HTML (nice artifact to browse)
       - name: Generate HTML coverage report
-        shell: bash
-        run: |
-          dotnet tool update -g dotnet-reportgenerator-globaltool
-          reportgenerator \
-            -reports:"$TEST_RESULTS_DIR/**/coverage.cobertura.xml" \
-            -targetdir:"$TEST_RESULTS_DIR/CoverageReport" \
-            -reporttypes:"HtmlInline_AzurePipelines;Cobertura"
-        env:
-          PATH: $HOME/.dotnet/tools:$PATH
+        uses: danielpalme/ReportGenerator-GitHub-Action@v5
+        with:
+          reports: ${{ env.TEST_RESULTS_DIR }}/**/coverage.cobertura.xml
+          targetdir: ${{ env.TEST_RESULTS_DIR }}/CoverageReport
+          reporttypes: 'HtmlInline_AzurePipelines;Cobertura'
 
       - name: Upload Test & Coverage Artifacts
         if: always()
