@@ -1,12 +1,12 @@
 <Solution>
   <Folder Name="/Pipelines/">
     <File Path=".github/workflows/codeql.yml" />
-    <File Path=".github/workflows/dotnet.yml" />
+    <File Path=".github/workflows/Test_and_deploy_PiholeClient.yml" />
   </Folder>
   <Folder Name="/Solution Items/">
     <File Path="README.md" />
   </Folder>
-  <Project Path="./DemoProject/DemoProject.csproj" />
-  <Project Path="./Greenwaytech.PiholeApiClient.Test/Greenwaytech.PiholeApiClient.Test.csproj" />
-  <Project Path="./Greenwaytech.PiholeApiClient/Greenwaytech.PiholeApiClient.csproj" />
+  <Project Path="DemoProject/DemoProject.csproj" />
+  <Project Path="Greenwaytech.PiholeApiClient.Test/Greenwaytech.PiholeApiClient.Test.csproj" />
+  <Project Path="Greenwaytech.PiholeApiClient/Greenwaytech.PiholeApiClient.csproj" />
 </Solution>
