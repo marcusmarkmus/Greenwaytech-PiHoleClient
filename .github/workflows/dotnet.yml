@@ -19,7 +19,7 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
     env:
-      # Point to your solution if not at repo root
+      
       SOLUTION_PATH: "./Greenwaytech.PiholeApiClient.slnx"
       CONFIGURATION: "Release"
       TEST_RESULTS_DIR: "TestResults"

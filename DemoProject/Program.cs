@@ -10,7 +10,13 @@ using Microsoft.Extensions.Hosting;
 var host = Host.CreateDefaultBuilder(args)
     .ConfigureAppConfiguration((context, config) =>
     {
-        config.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
+        if (!File.Exists("appsettings.json"))
+        {
+            Console.WriteLine("appsettings.json file not found! " +
+                "Please create the file with the necessary configuration for the pihole client." +
+                "Use the included appsettings.sample.json as a template.");
+        }
+        config.AddJsonFile("appsettings.json", optional: true, reloadOnChange: true);
     })
     .ConfigureServices((context, services) =>
     {

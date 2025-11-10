@@ -6,7 +6,7 @@
   <Folder Name="/Solution Items/">
     <File Path="README.md" />
   </Folder>
-  <Project Path="Greenwaytech.PiholeApiClient/DemoProject/DemoProject.csproj" />
-  <Project Path="Greenwaytech.PiholeApiClient/Greenwaytech.PiholeApiClient.Test/Greenwaytech.PiholeApiClient.Test.csproj" />
-  <Project Path="Greenwaytech.PiholeApiClient/Greenwaytech.PiholeApiClient/Greenwaytech.PiholeApiClient.csproj" />
+  <Project Path="./DemoProject/DemoProject.csproj" />
+  <Project Path="./Greenwaytech.PiholeApiClient.Test/Greenwaytech.PiholeApiClient.Test.csproj" />
+  <Project Path="./Greenwaytech.PiholeApiClient/Greenwaytech.PiholeApiClient.csproj" />
 </Solution>
