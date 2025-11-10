@@ -91,4 +91,19 @@ jobs:
           files: ${{ env.TEST_RESULTS_DIR }}/**/*.trx
           check_name: 'Test Results (${{ matrix.os }} / .NET ${{ matrix.dotnet }})'
 
+    
+      - name: Compare versions (NuGet.Versioning)
+        id: compare
+        uses: ./.github/actions/nuget-semver-compare
+        with:
+          project_path: ${{ env.PROJECT_PATH }}
+
+      - name: Show comparison decision
+        run: |
+          echo "PackageId:      ${{ steps.compare.outputs.package_id }}"
+          echo "Local version:  ${{ steps.compare.outputs.local_version }}"
+          echo "Remote latest:  ${{ steps.compare.outputs.remote_latest }}"
+          echo "Should publish: ${{ steps.compare.outputs.should_publish }}"
+
+
 

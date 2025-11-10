@@ -1,0 +1,96 @@
+name: "NuGet SemVer Compare (PowerShell + NuGet.Versioning)"
+description: "Compares <Version> in a .csproj against latest version on nuget.org using NuGet.Versioning"
+inputs:
+  project_path:
+    description: "Path to the .csproj file"
+    required: true
+runs:
+  using: "composite"
+  steps:
+    - name: Compare versions with NuGet.Versioning
+      id: decide
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $projectPath = "${{ inputs.project_path }}"
+
+        if (-not (Test-Path $projectPath)) {
+          throw "Project file not found: $projectPath"
+        }
+
+        # Extract <Version> from csproj
+        $versionMatch = Select-String -Path $projectPath -Pattern '<Version>([^<]+)</Version>' -AllMatches | Select-Object -First 1
+        if (-not $versionMatch) { throw "Version not found in $projectPath" }
+        $local = $versionMatch.Matches[0].Groups[1].Value.Trim()
+
+        # Extract <PackageId> or fall back to project name
+        $pkgMatch = Select-String -Path $projectPath -Pattern '<PackageId>([^<]+)</PackageId>' -AllMatches | Select-Object -First 1
+        if ($pkgMatch) {
+          $packageId = $pkgMatch.Matches[0].Groups[1].Value.Trim()
+        } else {
+          $packageId = [IO.Path]::GetFileNameWithoutExtension($projectPath)
+        }
+
+        $lowerId = $packageId.ToLowerInvariant()
+
+        # Query nuget.org flatcontainer index
+        try {
+          $indexJson = Invoke-RestMethod -Uri "https://api.nuget.org/v3-flatcontainer/$lowerId/index.json" -ErrorAction Stop
+          $remote = $indexJson.versions | Select-Object -Last 1
+        } catch {
+          # Package likely doesn't exist yet or transient network issue; treat as no remote
+          $remote = $null
+        }
+
+        # Prepare NuGet.Versioning
+        # We'll try to find an existing NuGet.Versioning.dll in local package cache,
+        # else we restore it via an ephemeral project to get the assembly.
+        $nugetVersioningDll = $null
+        $possible = Get-ChildItem -Recurse -Filter "NuGet.Versioning.dll" -ErrorAction SilentlyContinue "$HOME/.nuget/packages"
+        if ($possible) {
+          $nugetVersioningDll = $possible | Sort-Object FullName | Select-Object -Last 1
+        } else {
+          # Fallback: create a temp project, add package, then find the dll
+          $tmp = Join-Path $env:RUNNER_TEMP "nugetver"
+          if (Test-Path $tmp) { Remove-Item -Recurse -Force $tmp }
+          New-Item -ItemType Directory -Path $tmp | Out-Null
+          Push-Location $tmp
+          dotnet new console --framework net8.0 --no-restore | Out-Null
+          dotnet add package NuGet.Versioning --prerelease --no-restore | Out-Null
+          dotnet restore | Out-Null
+          Pop-Location
+          $nugetVersioningDll = Get-ChildItem -Recurse -Filter "NuGet.Versioning.dll" -ErrorAction SilentlyContinue "$HOME/.nuget/packages" | Select-Object -Last 1
+        }
+
+        if (-not $nugetVersioningDll) {
+          throw "Could not locate NuGet.Versioning.dll"
+        }
+
+        Add-Type -Path $nugetVersioningDll.FullName
+
+        $shouldPublish = $true
+        if ($remote) {
+          $localV = [NuGet.Versioning.NuGetVersion]::Parse($local)
+          $remoteV = [NuGet.Versioning.NuGetVersion]::Parse($remote)
+          # Publish only if local > remote (includes proper prerelease precedence)
+          $shouldPublish = ($localV.CompareTo($remoteV) -gt 0)
+        }
+
+        # Emit outputs
+        "package_id=$packageId" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        "local_version=$local" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        "remote_latest=$remote" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        "should_publish=$($shouldPublish.ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+outputs:
+  package_id:
+    description: "Resolved package ID"
+    value: ${{ steps.decide.outputs.package_id }}
+  local_version:
+    description: "Version from the csproj"
+    value: ${{ steps.decide.outputs.local_version }}
+  remote_latest:
+    description: "Latest nuget.org version (if any)"
+    value: ${{ steps.decide.outputs.remote_latest }}
+  should_publish:
+    description: "true if local version is higher than nuget.org latest"
+    value: ${{ steps.decide.outputs.should_publish }}
