@@ -27,6 +27,7 @@ jobs:
       TEST_PROJECT_PATH: "./Greenwaytech.PiholeApiClient.Test/Greenwaytech.PiholeApiClient.Test.csproj"
       CONFIGURATION: "Release"
       TEST_RESULTS_DIR: "TestResults"
+      NUGET_SOURCE_URL: "https://api.nuget.org/v3/index.json"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
