@@ -7,8 +7,12 @@ on:
     branches: [ "main" ]
   workflow_dispatch: {}
 
+
 permissions:
   contents: read
+  checks: write #For publishing check runs (test results)
+  pull-requests: write
+
 
 # Cancel older runs on the same branch/PR
 concurrency:
@@ -70,4 +74,10 @@ jobs:
             ${{ env.TEST_RESULTS_DIR }}/**/coverage.cobertura.xml
           if-no-files-found: warn
           retention-days: 7
+      - name: Publish Test Results
+        if: always()
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        with:
+          files: ${{ env.TEST_RESULTS_DIR }}/**/*.trx
+          check_name: 'Test Results'
 
