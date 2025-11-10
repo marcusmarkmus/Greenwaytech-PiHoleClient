@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PROJECT_PATH: "./Greenwaytech.PiholeApiClient/Greenwaytech.PiholeApiClient.csproj"
-      TEST_PROJECT_PATH: "./Greenwaytech.PiholeApiClient.Tests/Greenwaytech.PiholeApiClient.Tests.csproj"
+      TEST_PROJECT_PATH: "./Greenwaytech.PiholeApiClient.Test/Greenwaytech.PiholeApiClient.Test.csproj"
       CONFIGURATION: "Release"
       TEST_RESULTS_DIR: "TestResults"
     steps:
