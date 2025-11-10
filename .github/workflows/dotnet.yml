@@ -19,8 +19,8 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
     env:
-      
-      SOLUTION_PATH: "./Greenwaytech.PiholeApiClient/Greenwaytech.PiholeApiClient.csproj"
+      PROJECT_PATH: "./Greenwaytech.PiholeApiClient/Greenwaytech.PiholeApiClient.csproj"
+      TEST_PROJECT_PATH: "./Greenwaytech.PiholeApiClient.Tests/Greenwaytech.PiholeApiClient.Tests.csproj"
       CONFIGURATION: "Release"
       TEST_RESULTS_DIR: "TestResults"
     steps:
@@ -42,15 +42,15 @@ jobs:
             ${{ runner.os }}-nuget-
 
       - name: Restore
-        run: dotnet restore "$SOLUTION_PATH"
+        run: dotnet restore "$PROJECT_PATH"
 
       - name: Build
-        run: dotnet build "$SOLUTION_PATH" -c "$CONFIGURATION" --no-restore #/warnaserror #Add this back in later and fix warnings
+        run: dotnet build "$PROJECT_PATH" -c "$CONFIGURATION" --no-restore #/warnaserror #Add this back in later and fix warnings
 
       - name: Test (trx + coverage)
         run: |
           mkdir -p "$TEST_RESULTS_DIR"
-          dotnet test "$SOLUTION_PATH" -c "$CONFIGURATION" --no-build \
+          dotnet test "$TEST_PROJECT_PATH" -c "$CONFIGURATION" --no-build \
             --collect:"XPlat Code Coverage" \
             --logger "trx;LogFileName=test_results.trx" \
             --results-directory "$TEST_RESULTS_DIR"
