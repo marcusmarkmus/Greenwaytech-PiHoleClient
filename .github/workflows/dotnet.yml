@@ -41,11 +41,16 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-nuget-
 
-      - name: Restore
+      - name: Restore PiholeClientProject
         run: dotnet restore "$PROJECT_PATH"
 
-      - name: Build
+      - name: Build PiholeClientProject
         run: dotnet build "$PROJECT_PATH" -c "$CONFIGURATION" --no-restore #/warnaserror #Add this back in later and fix warnings
+
+      - name: Restore Testproject
+        run: dotnet restore "$TEST_PROJECT_PATH"
+      - name: Build Testproject
+        run: dotnet build "$TEST_PROJECT_PATH" -c "$CONFIGURATION" --no-restore #/warnaserror #Add this back in later and fix warnings
 
       - name: Test (trx + coverage)
         run: |
@@ -66,12 +71,3 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-      # Optional: publish app binaries
-      # - name: Publish (app)
-      #   run: dotnet publish ./src/YourApp/YourApp.csproj -c "$CONFIGURATION" -o publish
-      #
-      # - name: Upload Publish Artifact
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: app-publish
-      #     path: publish
