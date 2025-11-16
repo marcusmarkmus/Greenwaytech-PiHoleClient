@@ -1,13 +1,13 @@
 ﻿using Microsoft.Extensions.Logging;
 
 namespace Greenwaytech.PiholeApiClient.Authentication;
-public class PiholeAuthHandler : DelegatingHandler
+internal class PiholeAuthHandler : DelegatingHandler
 
 {
     private readonly ILogger<PiholeAuthHandler> _logger;
     private readonly IPiholeSessionProvider _sessionProvider;
 
-    public PiholeAuthHandler(ILogger<PiholeAuthHandler> logger, IPiholeSessionProvider sessionProvider)
+    internal PiholeAuthHandler(ILogger<PiholeAuthHandler> logger, IPiholeSessionProvider sessionProvider)
     {
         _logger = logger;
         _sessionProvider = sessionProvider;

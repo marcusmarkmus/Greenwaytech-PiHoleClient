@@ -1,11 +1,8 @@
-﻿using DotNet.Testcontainers.Builders;
-using DotNet.Testcontainers.Containers;
+﻿using DotNet.Testcontainers.Containers;
 using Greenwaytech.PiholeApiClient.ApiClient;
-using Greenwaytech.PiholeApiClient.Authentication;
 using Greenwaytech.PiholeApiClient.Model.Configuration;
 using Greenwaytech.PiholeApiClient.Test.Extensions;
 using Greenwaytech.PiholeApiClient.Test.Providers;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Reflection;
 
@@ -159,23 +156,11 @@ public class PiholeApiClientTests
         ApiBaseUrl = _baseUrl,
         ApiKey = PiholeTestInstanceProvider.PiholePassword
     });
-    private PiholeAuthHandler CreatePiholeAuthHandler()
-    {
-        var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
-        var config = GetPiholeConfigOptions();
-        var sessionProvider = new PiholeSessionProvider(new HttpClient { BaseAddress = new Uri(_baseUrl) }, loggerFactory.CreateLogger<PiholeSessionProvider>(), config);
-        return new PiholeAuthHandler(loggerFactory.CreateLogger<PiholeAuthHandler>(), sessionProvider)
-        {
-            InnerHandler = new HttpClientHandler()
-        };
-    }
-    private PiholeApiClientService GeneratePiholeApiClientService()
+
+    private IPiholeApiClientService GeneratePiholeApiClientService()
     {
         var config = GetPiholeConfigOptions();
-        var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
-        var logger = loggerFactory.CreateLogger<PiholeApiClientService>();
-        var httpClient = new HttpClient(CreatePiholeAuthHandler()) { BaseAddress = new Uri(config.Value.ApiBaseUrl) };
-        return new PiholeApiClientService(httpClient, logger, config);
+        return PiholeTestsServiceProvider.GetPiholeApiClientService(config);
     }
     
 
