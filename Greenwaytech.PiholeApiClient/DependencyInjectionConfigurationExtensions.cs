@@ -5,7 +5,7 @@ using Greenwaytech.PiholeApiClient.Providers;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Greenwaytech.PiholeApiClient;
-public static class ConfigurationExtensions
+public static class DependencyInjectionConfigurationExtensions
 {
     public const string HttpClientPiholeApiClientName = "GreenwayTech.PiholeApiClientHttpClient";
 

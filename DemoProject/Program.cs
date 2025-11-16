@@ -10,6 +10,7 @@ using Microsoft.Extensions.Options;
 using System;
 
 
+#region Single Pi-hole Node
 //Example usage of the Pi-hole API client with dependency injection and configuration, for a single pihole node.
 var hostSinglePiholeNode = Host.CreateDefaultBuilder(args)
     .ConfigureAppConfiguration((context, config) =>
@@ -134,6 +135,9 @@ else
 }
 
 //await host.RunAsync();
+#endregion
+
+#region Multiple Pi-hole Nodes
 
 //--------------------------------> Multiple Pi-hole nodes with DI and factory pattern <----------------------------------
 
@@ -173,6 +177,9 @@ var teleportViaFactory = await piholeClientFromFactory.Teleport.PullPiholeTelepo
 Console.WriteLine($"Pi-hole teleport file retrieved via factory client:{teleportViaFactory.IsSuccess}");
 //
 
+#endregion
+
+#region Non-DI Context
 //------------------------------------------------------------------
 //Example in a non-DI context: //TODO:
 return; //for now
@@ -188,3 +195,5 @@ var piholeConfig = new Greenwaytech.PiholeApiClient.Model.Configuration.PiHoleIn
 using var httpClient = new HttpClient { BaseAddress = new Uri(piholeConfigFactoryExample.ApiBaseUrl) };
 var piholeApiClient = new PiholeApiClientService(httpClient, null!, Options.Create(piholeConfigFactoryExample));
 Console.WriteLine($"Pi-hole client created without DI: {piholeApiClient.GetType().Name}");
+
+#endregion

@@ -1,4 +1,5 @@
 using Greenwaytech.PiholeApiClient.ApiClient;
+using Greenwaytech.PiholeApiClient.Model.App;
 using Greenwaytech.PiholeApiClient.Model.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -22,7 +23,7 @@ public class PiholeClientFactory : IPiholeClientFactory
         if (string.IsNullOrWhiteSpace(piHoleInstanceApiConfig.ApiKey))
             throw new ArgumentException("API key must be provided", nameof(piHoleInstanceApiConfig.ApiKey));
 
-        var httpClient = _httpClientFactory.CreateClient(ConfigurationExtensions.HttpClientPiholeApiClientName);
+        var httpClient = _httpClientFactory.CreateClient(DependencyInjectionConfigurationExtensions.HttpClientPiholeApiClientName);
         httpClient.BaseAddress = new Uri(piHoleInstanceApiConfig.ApiBaseUrl);
         var logger = _loggerFactory.CreateLogger<PiholeApiClientService>();
         var config = new PiHoleInstanceApiConfig
@@ -33,4 +34,7 @@ public class PiholeClientFactory : IPiholeClientFactory
         var options = Microsoft.Extensions.Options.Options.Create(config);
         return new PiholeApiClientService(httpClient, logger, options);
     }
+    public IPiholeApiClientService CreateClient(PiholeNode node) 
+        => CreateClient(node.Config);
+
 }

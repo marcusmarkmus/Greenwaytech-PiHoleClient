@@ -8,7 +8,7 @@ using System.Text;
 using System.Text.Json;
 
 namespace Greenwaytech.PiholeApiClient.Authentication;
-public class PiholeSessionProvider : IPiholeSessionProvider
+internal class PiholeSessionProvider : IPiholeSessionProvider
 {
 
     private readonly HttpClient _httpClient;
@@ -16,14 +16,14 @@ public class PiholeSessionProvider : IPiholeSessionProvider
     private readonly PiHoleInstanceApiConfig _config;
     private PiholeApiSession? _cachedSession;
 
-    public PiholeSessionProvider(HttpClient httpClient, ILogger<PiholeSessionProvider> logger, IOptions<PiHoleInstanceApiConfig> options)
+    internal PiholeSessionProvider(HttpClient httpClient, ILogger<PiholeSessionProvider> logger, IOptions<PiHoleInstanceApiConfig> options)
     {
         _httpClient = httpClient;
         _logger = logger;
         _config = options.Value;
         _httpClient.BaseAddress = new Uri(_config.ApiBaseUrl);
     }
-    public async Task<PiholeApiSession> GetValidSessionAsync()
+    internal async Task<PiholeApiSession> GetValidSessionAsync()
     {
 
         if (_cachedSession?.IsValid() == true)
@@ -54,5 +54,10 @@ public class PiholeSessionProvider : IPiholeSessionProvider
 
         _cachedSession = authResponse.GetPiholeApiSession();
         return _cachedSession;
+    }
+
+    Task<PiholeApiSession> IPiholeSessionProvider.GetValidSessionAsync()
+    {
+        return GetValidSessionAsync();
     }
 }
