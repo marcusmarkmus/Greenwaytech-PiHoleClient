@@ -183,17 +183,17 @@ Console.WriteLine($"Pi-hole teleport file retrieved via factory client:{teleport
 //------------------------------------------------------------------
 //Example in a non-DI context: //TODO:
 return; //for now
-var configuration = new ConfigurationBuilder()
-    .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
-    .Build();
-var piholeSection = configuration.GetSection("PiHoleInstanceApiConfig");
-var piholeConfig = new Greenwaytech.PiholeApiClient.Model.Configuration.PiHoleInstanceApiConfig
-{
-    ApiBaseUrl = piholeSection.GetValue<string>("ApiBaseUrl") ?? throw new Exception(nameof(piholeSection)+" was not found in settings"),
-    ApiKey = piholeSection.GetValue<string>("ApiKey") ?? throw new Exception(nameof(piholeSection)+" was not found in settings")
-};
-using var httpClient = new HttpClient { BaseAddress = new Uri(piholeConfigFactoryExample.ApiBaseUrl) };
-var piholeApiClient = new PiholeApiClientService(httpClient, null!, Options.Create(piholeConfigFactoryExample));
-Console.WriteLine($"Pi-hole client created without DI: {piholeApiClient.GetType().Name}");
+//var configuration = new ConfigurationBuilder()
+//    .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+//    .Build();
+//var piholeSection = configuration.GetSection("PiHoleInstanceApiConfig");
+//var piholeConfig = new Greenwaytech.PiholeApiClient.Model.Configuration.PiHoleInstanceApiConfig
+//{
+//    ApiBaseUrl = piholeSection.GetValue<string>("ApiBaseUrl") ?? throw new Exception(nameof(piholeSection)+" was not found in settings"),
+//    ApiKey = piholeSection.GetValue<string>("ApiKey") ?? throw new Exception(nameof(piholeSection)+" was not found in settings")
+//};
+//using var httpClient = new HttpClient { BaseAddress = new Uri(piholeConfigFactoryExample.ApiBaseUrl) };
+//var piholeApiClient = new PiholeApiClientService(httpClient, null!, Options.Create(piholeConfigFactoryExample));
+//Console.WriteLine($"Pi-hole client created without DI: {piholeApiClient.GetType().Name}");
 
 #endregion

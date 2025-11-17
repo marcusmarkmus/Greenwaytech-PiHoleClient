@@ -50,12 +50,12 @@ jobs:
         run: dotnet restore "$PROJECT_PATH"
 
       - name: Build PiholeClientProject
-        run: dotnet build "$PROJECT_PATH" -c "$CONFIGURATION" --no-restore #/warnaserror #Add this back in later and fix warnings
+        run: dotnet build "$PROJECT_PATH" -c "$CONFIGURATION" --no-restore /warnaserror 
 
       - name: Restore Testproject
         run: dotnet restore "$TEST_PROJECT_PATH"
       - name: Build Testproject
-        run: dotnet build "$TEST_PROJECT_PATH" -c "$CONFIGURATION" --no-restore #/warnaserror #Add this back in later and fix warnings
+        run: dotnet build "$TEST_PROJECT_PATH" -c "$CONFIGURATION" --no-restore /warnaserror 
 
       - name: Test (trx + coverage)
         run: |

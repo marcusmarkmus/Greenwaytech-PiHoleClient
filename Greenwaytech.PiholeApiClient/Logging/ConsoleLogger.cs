@@ -1,5 +1,5 @@
 using Microsoft.Extensions.Logging;
-
+using Microsoft.Extensions.Logging.Abstractions;
 namespace Greenwaytech.PiholeApiClient.Logging
 {
     /// <summary>
@@ -8,7 +8,7 @@ namespace Greenwaytech.PiholeApiClient.Logging
     /// <typeparam name="T">The category type for the logger.</typeparam>
     public class ConsoleLogger<T> : ILogger<T>
     {
-        public IDisposable BeginScope<TState>(TState state) => NullScope.Instance;
+        IDisposable ILogger.BeginScope<TState>(TState state) => NullScope.Instance;
         public bool IsEnabled(LogLevel logLevel) => true;
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
         {
