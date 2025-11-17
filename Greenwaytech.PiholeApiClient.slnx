@@ -6,6 +6,12 @@
   <Folder Name="/PipelineTemplates/">
     <File Path=".github/actions/nuget-semver-compare/action.yml" />
   </Folder>
+  <Folder Name="/PipelineTemplates/NugetPush/">
+    <File Path=".github/actions/nuget-push/action.yml" />
+  </Folder>
+  <Folder Name="/PipelineTemplates/semversionCompare/">
+    <File Path=".github/actions/nuget-semver-compare/action.yml" />
+  </Folder>
   <Folder Name="/Solution Items/">
     <File Path="README.md" />
   </Folder>

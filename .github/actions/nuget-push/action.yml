@@ -1,0 +1,53 @@
+name: "NuGet Push"
+description: "Compare versions, pack, and push NuGet package if needed."
+runs:
+  using: "composite"
+  steps:
+    - name: Compare versions (NuGet.Versioning)
+      id: compare
+      uses: ./.github/actions/nuget-semver-compare
+      with:
+        project_path: ${{ inputs.project_path }}
+
+    - name: Show comparison decision
+      run: |
+        echo "PackageId:      ${{ steps.compare.outputs.package_id }}"
+        echo "Local version:  ${{ steps.compare.outputs.local_version }}"
+        echo "Remote latest:  ${{ steps.compare.outputs.remote_latest }}"
+        echo "Should publish: ${{ steps.compare.outputs.should_publish }}"
+      shell: bash
+
+    - name: Pack
+      if: steps.compare.outputs.should_publish == 'true'
+      run: |
+        dotnet pack "${{ inputs.project_path }}" -c "${{ inputs.configuration }}" -o ./artifacts -p:ContinuousIntegrationBuild=true
+      shell: bash
+
+    - name: Push to nuget.org
+      if: steps.compare.outputs.should_publish == 'true'
+      env:
+        NUGET_API_KEY: ${{ inputs.nuget_api_key }}
+      run: |
+        if [[ -z "${NUGET_API_KEY:-}" ]]; then
+          echo "? NUGET_API_KEY input is missing"; exit 1
+        fi
+        dotnet nuget push "./artifacts/*.nupkg" \
+          --source "${{ inputs.nuget_source_url }}" \
+          --api-key "$NUGET_API_KEY" \
+          --skip-duplicate
+      shell: bash
+
+inputs:
+  project_path:
+    description: 'Path to the .csproj file'
+    required: true
+  configuration:
+    description: 'Build configuration (e.g., Release)'
+    required: true
+  nuget_api_key:
+    description: 'NuGet API key'
+    required: true
+  nuget_source_url:
+    description: 'NuGet source URL'
+    required: true
+

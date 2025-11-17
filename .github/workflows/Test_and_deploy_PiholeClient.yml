@@ -92,35 +92,11 @@ jobs:
           files: ${{ env.TEST_RESULTS_DIR }}/**/*.trx
           check_name: 'Test Results (${{ matrix.os }} / .NET ${{ matrix.dotnet }})'
 
-    
-      - name: Compare versions (NuGet.Versioning)
-        id: compare
-        uses: ./.github/actions/nuget-semver-compare
+      - name: NuGet Push (publish if version changed)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: ./.github/actions/nuget-push
         with:
           project_path: ${{ env.PROJECT_PATH }}
-
-      - name: Show comparison decision
-        run: |
-          echo "PackageId:      ${{ steps.compare.outputs.package_id }}"
-          echo "Local version:  ${{ steps.compare.outputs.local_version }}"
-          echo "Remote latest:  ${{ steps.compare.outputs.remote_latest }}"
-          echo "Should publish: ${{ steps.compare.outputs.should_publish }}"
-
-      - name: Pack
-        if: steps.compare.outputs.should_publish == 'true'
-        run: |
-          dotnet pack "$PROJECT_PATH" -c "$CONFIGURATION" -o ./artifacts  -p:ContinuousIntegrationBuild=true
-
-
-      - name: Push to nuget.org
-        if: steps.compare.outputs.should_publish == 'true'
-        env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
-        run: |
-         if [[ -z "${NUGET_API_KEY:-}" ]]; then
-           echo "❌ NUGET_API_KEY secret is missing"; exit 1
-         fi
-         dotnet nuget push "./artifacts/*.nupkg" \
-         --source "${{ env.NUGET_SOURCE_URL }}" \
-         --api-key "$NUGET_API_KEY" \
-         --skip-duplicate
+          configuration: ${{ env.CONFIGURATION }}
+          nuget_api_key: ${{ secrets.NUGET_API_KEY }}
+          nuget_source_url: ${{ env.NUGET_SOURCE_URL }}
