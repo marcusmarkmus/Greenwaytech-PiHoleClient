@@ -5,7 +5,6 @@ using Greenwaytech.PiholeApiClient.Providers;
 using Greenwaytech.PiholeApiClient.Test.Extensions;
 using Greenwaytech.PiholeApiClient.Test.Providers;
 using Microsoft.Extensions.Logging;
-using NUnit.Framework;
 using NSubstitute;
 
 namespace Greenwaytech.PiholeApiClient.Test.Tests;

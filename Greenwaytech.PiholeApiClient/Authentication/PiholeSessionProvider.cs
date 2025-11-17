@@ -1,7 +1,9 @@
 ﻿using Greenwaytech.PiholeApiClient.Extensions;
+using Greenwaytech.PiholeApiClient.Logging;
 using Greenwaytech.PiholeApiClient.Model.Configuration;
 using Greenwaytech.PiholeApiClient.Model.Pihole;
 using Greenwaytech.PiholeApiClient.Model.Pihole.DTO;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Text;
@@ -16,13 +18,22 @@ internal class PiholeSessionProvider : IPiholeSessionProvider
     private readonly PiHoleInstanceApiConfig _config;
     private PiholeApiSession? _cachedSession;
 
-    internal PiholeSessionProvider(HttpClient httpClient, ILogger<PiholeSessionProvider> logger, IOptions<PiHoleInstanceApiConfig> options)
+    [ActivatorUtilitiesConstructor]
+    public PiholeSessionProvider(HttpClient httpClient, ILogger<PiholeSessionProvider> logger, IOptions<PiHoleInstanceApiConfig> options)
     {
         _httpClient = httpClient;
         _logger = logger;
         _config = options.Value;
         _httpClient.BaseAddress = new Uri(_config.ApiBaseUrl);
     }
+    /// <summary>
+    /// Overload for non-DI contexts that uses a console logger by default.
+    /// </summary>
+    public PiholeSessionProvider(HttpClient httpClient, IOptions<PiHoleInstanceApiConfig> options)
+        : this(httpClient, new ConsoleLogger<PiholeSessionProvider>(), options)
+    {
+    }
+
     internal async Task<PiholeApiSession> GetValidSessionAsync()
     {
 

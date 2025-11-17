@@ -23,10 +23,11 @@ internal class PiholeTestsServiceProvider
     public static IPiholeApiClientService GetPiholeApiClientService(PiHoleInstanceApiConfig config)
     {
         var services = new ServiceCollection();
-
+        
         services.AddPiholeApiClient(options =>
         {
-            options = config;
+            options.ApiKey = config.ApiKey;
+            options.ApiBaseUrl = config.ApiBaseUrl;
         });
         var serviceProvider = services.BuildServiceProvider();
         var clientService = serviceProvider.GetRequiredService<IPiholeApiClientService>();
@@ -35,8 +36,8 @@ internal class PiholeTestsServiceProvider
     public static IPiholeClientFactory GetPiholeClientFactory()
     {
         var services = new ServiceCollection();
-        services.AddPiholeApiClientFactory();
-        
+     
+
         var serviceProvider = services.BuildServiceProvider();
         var clientFactory = serviceProvider.GetRequiredService<IPiholeClientFactory>();
         return clientFactory;
