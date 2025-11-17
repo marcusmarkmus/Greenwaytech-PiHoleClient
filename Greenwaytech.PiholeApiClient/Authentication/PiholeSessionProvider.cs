@@ -1,14 +1,16 @@
 ﻿using Greenwaytech.PiholeApiClient.Extensions;
+using Greenwaytech.PiholeApiClient.Logging;
 using Greenwaytech.PiholeApiClient.Model.Configuration;
 using Greenwaytech.PiholeApiClient.Model.Pihole;
 using Greenwaytech.PiholeApiClient.Model.Pihole.DTO;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Text;
 using System.Text.Json;
 
 namespace Greenwaytech.PiholeApiClient.Authentication;
-public class PiholeSessionProvider : IPiholeSessionProvider
+internal class PiholeSessionProvider : IPiholeSessionProvider
 {
 
     private readonly HttpClient _httpClient;
@@ -16,6 +18,7 @@ public class PiholeSessionProvider : IPiholeSessionProvider
     private readonly PiHoleInstanceApiConfig _config;
     private PiholeApiSession? _cachedSession;
 
+    [ActivatorUtilitiesConstructor]
     public PiholeSessionProvider(HttpClient httpClient, ILogger<PiholeSessionProvider> logger, IOptions<PiHoleInstanceApiConfig> options)
     {
         _httpClient = httpClient;
@@ -23,7 +26,15 @@ public class PiholeSessionProvider : IPiholeSessionProvider
         _config = options.Value;
         _httpClient.BaseAddress = new Uri(_config.ApiBaseUrl);
     }
-    public async Task<PiholeApiSession> GetValidSessionAsync()
+    /// <summary>
+    /// Overload for non-DI contexts that uses a console logger by default.
+    /// </summary>
+    public PiholeSessionProvider(HttpClient httpClient, IOptions<PiHoleInstanceApiConfig> options)
+        : this(httpClient, new ConsoleLogger<PiholeSessionProvider>(), options)
+    {
+    }
+
+    internal async Task<PiholeApiSession> GetValidSessionAsync()
     {
 
         if (_cachedSession?.IsValid() == true)
@@ -54,5 +65,10 @@ public class PiholeSessionProvider : IPiholeSessionProvider
 
         _cachedSession = authResponse.GetPiholeApiSession();
         return _cachedSession;
+    }
+
+    Task<PiholeApiSession> IPiholeSessionProvider.GetValidSessionAsync()
+    {
+        return GetValidSessionAsync();
     }
 }

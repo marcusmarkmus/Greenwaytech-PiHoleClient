@@ -1,21 +1,16 @@
-﻿using DotNet.Testcontainers.Builders;
-using DotNet.Testcontainers.Containers;
+﻿using DotNet.Testcontainers.Containers;
 using Greenwaytech.PiholeApiClient.ApiClient;
-using Greenwaytech.PiholeApiClient.Authentication;
 using Greenwaytech.PiholeApiClient.Model.Configuration;
 using Greenwaytech.PiholeApiClient.Test.Extensions;
-using Microsoft.Extensions.Logging;
+using Greenwaytech.PiholeApiClient.Test.Providers;
 using Microsoft.Extensions.Options;
 using System.Reflection;
 
-namespace Greenwaytech.PiholeApiClient.Test;
+namespace Greenwaytech.PiholeApiClient.Test.Tests;
 
 public class PiholeApiClientTests
 {
-    private const string PiholeImage = "pihole/pihole:latest";
-    private const string PiholePassword = "testpassword";
-    private const string PiholeWebserverPasswordEnvVar = "FTLCONF_webserver_api_password";
-    private const int PiholePort = 80;
+
     private IContainer _container;
     private string _baseUrl;
 
@@ -23,12 +18,12 @@ public class PiholeApiClientTests
     public async Task GlobalSetup()
     {
         //All tests use the same container instance for speed - but be aware that tests may affect each other due to shared state.
-        _container = BuildPiholeTestContainer();
+        _container = PiholeTestInstanceProvider.BuildPiholeTestContainer();
 
         await _container.StartAsync()
           .ConfigureAwait(false);
 
-       _baseUrl = _container.GetPiholeTestContainerBaseUrl(PiholePort);
+       _baseUrl = _container.GetPiholeTestContainerBaseUrl(PiholeTestInstanceProvider.PiholePort);
 
     }
 
@@ -159,33 +154,15 @@ public class PiholeApiClientTests
         => Options.Create(new PiHoleInstanceApiConfig
     {
         ApiBaseUrl = _baseUrl,
-        ApiKey = PiholePassword
+        ApiKey = PiholeTestInstanceProvider.PiholePassword
     });
-    private PiholeAuthHandler CreatePiholeAuthHandler()
-    {
-        var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
-        var config = GetPiholeConfigOptions();
-        var sessionProvider = new PiholeSessionProvider(new HttpClient { BaseAddress = new Uri(_baseUrl) }, loggerFactory.CreateLogger<PiholeSessionProvider>(), config);
-        return new PiholeAuthHandler(loggerFactory.CreateLogger<PiholeAuthHandler>(), sessionProvider)
-        {
-            InnerHandler = new HttpClientHandler()
-        };
-    }
-    private PiholeApiClientService GeneratePiholeApiClientService()
+
+    private IPiholeApiClientService GeneratePiholeApiClientService()
     {
         var config = GetPiholeConfigOptions();
-        var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
-        var logger = loggerFactory.CreateLogger<PiholeApiClientService>();
-        var httpClient = new HttpClient(CreatePiholeAuthHandler()) { BaseAddress = new Uri(config.Value.ApiBaseUrl) };
-        return new PiholeApiClientService(httpClient, logger, config);
+        return PiholeTestsServiceProvider.GetPiholeApiClientService(config);
     }
-    private static IContainer BuildPiholeTestContainer()
-        => new ContainerBuilder()
-          .WithImage(PiholeImage)
-          .WithPortBinding(PiholePort, true)
-          .WithEnvironment(PiholeWebserverPasswordEnvVar, PiholePassword)
-          .WithWaitStrategy(Wait.ForUnixContainer().UntilInternalTcpPortIsAvailable(PiholePort))
-          .Build();
+    
 
     private static byte[] GetPiholeTeleportFileData()
     {

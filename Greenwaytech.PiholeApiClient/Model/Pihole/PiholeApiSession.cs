@@ -2,7 +2,7 @@
 
 namespace Greenwaytech.PiholeApiClient.Model.Pihole;
 
-public record PiholeApiSession
+internal record PiholeApiSession
 {
     [JsonPropertyName("valid")]
     public bool? Valid { get; set; }
