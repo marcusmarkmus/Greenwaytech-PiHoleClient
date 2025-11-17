@@ -5,7 +5,7 @@ using System.Text.Json;
 
 namespace Greenwaytech.PiholeApiClient.Extensions;
 
-public static class PiholeExtensions
+internal static class PiholeExtensions
 {
     private static readonly JsonSerializerOptions _jsonSerializerOptions = new()
     {
@@ -13,7 +13,7 @@ public static class PiholeExtensions
         WriteIndented = false,
         DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
     };
-    private static readonly HashSet<string> _skipArchiveEntriesList =
+    internal static readonly HashSet<string> _skipArchiveEntriesList =
     [
         
             "etc/pihole/dhcp.leases",
@@ -21,7 +21,7 @@ public static class PiholeExtensions
             "etc/hosts"
     ];
 
-    public static PiholeApiSession GetPiholeApiSession(this PiholeAuthResponse piholeAuthResponse)
+    internal static PiholeApiSession GetPiholeApiSession(this PiholeAuthResponse piholeAuthResponse)
     {
         return new PiholeApiSession
         {
@@ -34,7 +34,7 @@ public static class PiholeExtensions
             PiholeAuthResponseTimeStamp = DateTimeOffset.UtcNow
         };
     }
-    public static string ComputeHash(this object data)
+    internal static string ComputeHash(this object data)
     {
         // Serialize the object to JSON
         var jsonData = JsonSerializer.Serialize(data, _jsonSerializerOptions);
@@ -46,7 +46,7 @@ public static class PiholeExtensions
         return Convert.ToHexStringLower(hashBytes);
     }
 
-    public static string ComputeHash(this byte[] data)
+    internal static string ComputeHash(this byte[] data)
     {
         //data is a zip, extract the content and compute the hash
         var zipContents = ExtractZipContents(data);
@@ -58,7 +58,7 @@ public static class PiholeExtensions
 
 
 
-    private static Dictionary<string, byte[]> ExtractZipContents(byte[] zipBytes)
+    internal static Dictionary<string, byte[]> ExtractZipContents(byte[] zipBytes)
     {
         var result = new Dictionary<string, byte[]>();
 

@@ -1,13 +1,10 @@
-﻿using Greenwaytech.PiholeApiClient.ApiClient.SubClients;
-using Greenwaytech.PiholeApiClient.ApiClient.SubClients.Config;
+﻿using Greenwaytech.PiholeApiClient.ApiClient.SubClients.Config;
 using Greenwaytech.PiholeApiClient.ApiClient.SubClients.Teleport;
-using Greenwaytech.PiholeApiClient.Model.App;
+using Greenwaytech.PiholeApiClient.Logging;
 using Greenwaytech.PiholeApiClient.Model.Configuration;
-using Greenwaytech.PiholeApiClient.Model.Pihole;
-using Greenwaytech.PiholeApiClient.Model.Pihole.DTO;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using System.Text.Json;
 
 namespace Greenwaytech.PiholeApiClient.ApiClient;
 
@@ -26,7 +23,7 @@ public class PiholeApiClientService : IPiholeApiClientService
     public ITeleportClient Teleport { get; }
     public IPiholeConfigClient Config { get; }
 
-
+    [ActivatorUtilitiesConstructor]
     public PiholeApiClientService(HttpClient httpClient, ILogger<PiholeApiClientService> logger, IOptions<PiHoleInstanceApiConfig> options)
     {
         _httpClient = httpClient;
@@ -35,6 +32,16 @@ public class PiholeApiClientService : IPiholeApiClientService
         _httpClient.BaseAddress = new Uri(_piholeInstanceApiConfig.ApiBaseUrl);
         Teleport = new TeleportClient(_httpClient, _logger);
         Config = new PiholeConfigClient(_httpClient, _logger);
+    }
+
+    /// <summary>
+    /// Overload for non-DI contexts that uses a console logger by default.
+    /// </summary>
+    /// <param name="httpClient"></param>
+    /// <param name="options"></param>
+    public PiholeApiClientService(HttpClient httpClient, IOptions<PiHoleInstanceApiConfig> options)
+        : this(httpClient, new ConsoleLogger<PiholeApiClientService>(), options)
+    {
     }
 }
 

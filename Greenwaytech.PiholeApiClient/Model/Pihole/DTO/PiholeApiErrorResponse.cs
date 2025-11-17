@@ -2,7 +2,7 @@
 
 namespace Greenwaytech.PiholeApiClient.Model.Pihole.DTO;
 
-public record PiholeApiErrorResponse
+internal record PiholeApiErrorResponse
 {
     [JsonPropertyName("error")]
     public Error? Error { get; set; }

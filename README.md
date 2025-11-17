@@ -2,6 +2,8 @@
 a .net client library for interacting with the Pi-Hole API - WIP
 
 # Example Usage
+Add the  [Greenwaytech.PiholeApiClient nuget package](https://www.nuget.org/packages/Greenwaytech.PiholeApiClient/)  in your preferred way.
+ 
 Appsettings.json configuration example:
 ```json
 {
