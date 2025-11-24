@@ -9,6 +9,7 @@ namespace Greenwaytech.PiholeApiClient.Test.Tests;
 /// Unit tests for ResponseBuilderExtensions
 /// </summary>
 [TestFixture]
+[Parallelizable(ParallelScope.All)]
 public class ResponseBuilderExtensionsTests
 {
     #region ToFailureResponse Tests

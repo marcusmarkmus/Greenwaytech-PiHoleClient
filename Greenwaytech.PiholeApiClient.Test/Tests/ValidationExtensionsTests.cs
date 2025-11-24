@@ -7,6 +7,7 @@ namespace Greenwaytech.PiholeApiClient.Test.Tests;
 /// Unit tests for ValidationExtensions
 /// </summary>
 [TestFixture]
+[Parallelizable(ParallelScope.All)]
 public class ValidationExtensionsTests
 {
     #region Validate LocalDnsRecordRequest Tests

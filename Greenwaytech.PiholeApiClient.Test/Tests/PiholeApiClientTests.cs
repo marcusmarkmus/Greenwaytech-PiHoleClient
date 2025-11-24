@@ -11,6 +11,7 @@ using System.Reflection;
 namespace Greenwaytech.PiholeApiClient.Test.Tests;
 
 [Parallelizable(ParallelScope.All)]
+[TestFixture]
 public class PiholeApiClientTests
 {
 
@@ -29,7 +30,7 @@ public class PiholeApiClientTests
         _baseUrl = _container.GetPiholeTestContainerBaseUrl(PiholeTestInstanceProvider.PiholePort);
         
         // Small delay to ensure all background services are fully initialized
-        await Task.Delay(1000);
+        await Task.Delay(5000);
     }
 
     [TearDown]

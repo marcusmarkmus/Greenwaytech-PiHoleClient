@@ -9,27 +9,22 @@ using NSubstitute;
 
 namespace Greenwaytech.PiholeApiClient.Test.Tests;
 
+[TestFixture]
+[Parallelizable(ParallelScope.All)]
 public class PiholeClilentFactoryTests
 {
-    private IContainer _container;
-    private string _baseUrl;
+    private string _baseUrl => "http://localhost:8080";
 
     [OneTimeSetUp]
     public async Task GlobalSetup()
     {
-        _container = PiholeTestInstanceProvider.BuildPiholeTestContainer();
-        await _container.StartAsync();
-        _baseUrl = _container.GetPiholeTestContainerBaseUrl(PiholeTestInstanceProvider.PiholePort);
+
     }
 
     [OneTimeTearDown]
     public async Task GlobalTeardown()
     {
-        if (_container is not null)
-        {
-            await _container.StopAsync();
-            await _container.DisposeAsync();
-        }
+    
     }
 
     [Test]
