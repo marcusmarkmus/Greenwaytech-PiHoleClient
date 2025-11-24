@@ -112,7 +112,7 @@ public class DnsRecordExtensionsTests
 
         // Assert
         Assert.That(result, Is.Not.Null);
-        Assert.That(result.Value.ipAddress, Is.EqualTo("2001:0db8:85a3::8a2e:0370:7334"));
+        Assert.That(result!.Value.ipAddress, Is.EqualTo("2001:0db8:85a3::8a2e:0370:7334"));
         Assert.That(result.Value.domain, Is.EqualTo("test.local"));
     }
 

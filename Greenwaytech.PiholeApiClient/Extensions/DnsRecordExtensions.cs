@@ -40,7 +40,7 @@ internal static class DnsRecordExtensions
     /// <param name="ipAddress">IP address to search for</param>
     /// <param name="domain">Domain name to search for</param>
     /// <returns>True if the record exists, false otherwise</returns>
-    internal static bool ContainsRecord(this IEnumerable<string> records, string ipAddress, string domain)
+    internal static bool ContainsRecord(this IEnumerable<string>? records, string ipAddress, string domain)
     {
         if (records is null)
             return false;

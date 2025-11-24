@@ -14,8 +14,8 @@ namespace Greenwaytech.PiholeApiClient.Test.Tests;
 public class PiholeApiClientTests
 {
 
-    private IContainer _container;
-    private string _baseUrl;
+    private IContainer? _container;
+    private string? _baseUrl;
 
     [SetUp]
     public async Task Setup()
@@ -85,7 +85,7 @@ public class PiholeApiClientTests
         
         var blockTTLToSet = 5;
         var localDnsRecordToAdd = "10.10.0.100 exampledomain.local";
-        string[] hostsListToPatch = [.. originalConfig.Dns?.Hosts ?? [], .. new[] { localDnsRecordToAdd }];
+        string[] hostsListToPatch = [.. originalConfig?.Dns?.Hosts ?? [], .. new[] { localDnsRecordToAdd }];
 
         var patchRequest = new Model.Pihole.DTO.PiholePatchConfigRequest
         {
@@ -108,7 +108,7 @@ public class PiholeApiClientTests
         Assert.That(getResultAfter.IsSuccess, Is.True, getResultAfter.ErrorMessage);
         var updatedConfig = getResultAfter.Data?.Config;
         Assert.That(updatedConfig, Is.Not.Null);
-        Assert.That(updatedConfig.Dns?.BlockTTL, Is.EqualTo(blockTTLToSet));
+        Assert.That(updatedConfig!.Dns?.BlockTTL, Is.EqualTo(blockTTLToSet));
         Assert.That(updatedConfig.Dns?.Hosts, Does.Contain(localDnsRecordToAdd));
     }
 
@@ -139,7 +139,7 @@ public class PiholeApiClientTests
             Assert.That(importResult.IsSuccess, Is.True, importResult.ErrorMessage);
             Assert.That(importResult.Data, Is.Not.Null);
         }
-        Assert.That(importResult.Data.Error, Is.Null, $"Import error: {importResult.Data.Error?.Message}");
+        Assert.That(importResult.Data?.Error, Is.Null, $"Import error: {importResult.Data?.Error?.Message}");
 
         var configResult = await cut.Config.GetPiholeConfigAsync();
         using (Assert.EnterMultipleScope())
@@ -147,8 +147,8 @@ public class PiholeApiClientTests
             Assert.That(configResult.IsSuccess, Is.True, configResult.ErrorMessage);
             Assert.That(configResult.Data, Is.Not.Null);
         }
-        Assert.That(configResult.Data.Config, Is.Not.Null);
-        Assert.That(configResult.Data.Config.Dns?.Hosts, Does.Contain(knownConfigChangeInTeleportFileHosts), "Imported config hosts does not contain expected value from teleport file.");
+        Assert.That(configResult?.Data?.Config, Is.Not.Null);
+        Assert.That(configResult!.Data!.Config!.Dns?.Hosts, Does.Contain(knownConfigChangeInTeleportFileHosts), "Imported config hosts does not contain expected value from teleport file.");
 
     }
 
@@ -175,7 +175,7 @@ public class PiholeApiClientTests
         // Assert
         Assert.That(result.IsSuccess, Is.True, result.ErrorMessage);
         Assert.That(result.Data, Is.Not.Null);
-        Assert.That(result.Data.DataOperation, Is.EqualTo(DataOperation.Created));
+        Assert.That(result.Data!.DataOperation, Is.EqualTo(DataOperation.Created));
         Assert.That(result.Data.Message, Does.Contain("added successfully"));
 
         var config = await cut.Config.GetPiholeConfigAsync();
@@ -773,7 +773,7 @@ public class PiholeApiClientTests
     private IOptions<PiHoleInstanceApiConfig> GetPiholeConfigOptions() 
         => Options.Create(new PiHoleInstanceApiConfig
     {
-        ApiBaseUrl = _baseUrl,
+        ApiBaseUrl = _baseUrl ?? throw new InvalidOperationException("Base URL is not set"),
         ApiKey = PiholeTestInstanceProvider.PiholePassword
     });
 
