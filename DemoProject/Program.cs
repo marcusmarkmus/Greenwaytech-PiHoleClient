@@ -1,13 +1,14 @@
 ﻿using DemoProject;
 using Greenwaytech.PiholeApiClient;
 using Greenwaytech.PiholeApiClient.ApiClient;
+using Greenwaytech.PiholeApiClient.Model.App;
+using Greenwaytech.PiholeApiClient.Model.App.Response;
 using Greenwaytech.PiholeApiClient.Model.Configuration;
 using Greenwaytech.PiholeApiClient.Model.Pihole.DTO;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
-using System;
 
 
 #region Single Pi-hole Node
@@ -38,6 +39,79 @@ var hostSinglePiholeNode = Host.CreateDefaultBuilder(args)
 var piholeClient = hostSinglePiholeNode.Services.GetRequiredService<IPiholeApiClientService>();
 Console.WriteLine($"Pi-hole client resolved: {piholeClient.GetType().Name}");
 
+Console.WriteLine("\n=== Testing DNS Record Management ===\n");
+
+// Test 1: Add a new DNS record
+Console.WriteLine("--- Test 1: Adding new DNS record ---");
+var dnsRecordRequest = new LocalDnsRecordRequest
+{
+    Domain= "api.test",
+    IpAddress = "10.10.10.99"
+};
+var ensureDnsRecordResult = await piholeClient.Config.EnsureLocalDnsRecord(dnsRecordRequest);
+Console.WriteLine($"Result: {ensureDnsRecordResult.Data?.Message}");
+Console.WriteLine($"Operation: {ensureDnsRecordResult.Data?.DataOperation}");
+
+// Test 2: Try to add the same record again (should say it already exists)
+Console.WriteLine("\n--- Test 2: Adding same record again ---");
+var ensureDnsRecordResult2 = await piholeClient.Config.EnsureLocalDnsRecord(dnsRecordRequest);
+Console.WriteLine($"Result: {ensureDnsRecordResult2.Data?.Message}");
+Console.WriteLine($"Operation: {ensureDnsRecordResult2.Data?.DataOperation}");
+
+// Test 3: Try to add same domain with different IP (should detect conflict)
+Console.WriteLine("\n--- Test 3: Adding same domain with different IP (conflict test) ---");
+var conflictingRequest = new LocalDnsRecordRequest
+{
+    Domain = "api.test",
+    IpAddress = "192.168.1.50"
+};
+var conflictResult = await piholeClient.Config.EnsureLocalDnsRecord(conflictingRequest);
+if (!conflictResult.IsSuccess && conflictResult.Data?.DataOperation == DataOperation.Conflict)
+{
+    Console.WriteLine($"✓ Conflict detected as expected!");
+    Console.WriteLine($"Message: {conflictResult.Data?.Message}");
+    Console.WriteLine($"Existing IPs: {string.Join(", ", conflictResult.Data?.ConflictingIpAddresses ?? [])}");
+}
+
+// Test 4: Add multiple domains pointing to the same IP (this is valid)
+Console.WriteLine("\n--- Test 4: Adding multiple domains to same IP ---");
+var domain2Request = new LocalDnsRecordRequest
+{
+    Domain = "api2.test",
+    IpAddress = "10.10.10.99" // Same IP as first domain
+};
+var ensureResult3 = await piholeClient.Config.EnsureLocalDnsRecord(domain2Request);
+Console.WriteLine($"Result: {ensureResult3.Data?.Message}");
+
+var domain3Request = new LocalDnsRecordRequest
+{
+    Domain = "api3.test",
+    IpAddress = "10.10.10.99" // Same IP again
+};
+var ensureResult4 = await piholeClient.Config.EnsureLocalDnsRecord(domain3Request);
+Console.WriteLine($"Result: {ensureResult4.Data?.Message}");
+
+// Test 5: Remove specific record (exact match)
+Console.WriteLine("\n--- Test 5: Removing specific DNS record ---");
+var removeSpecificResult = await piholeClient.Config.RemoveLocalDnsRecord(domain2Request);
+Console.WriteLine($"Result: {removeSpecificResult.Data?.Message}");
+Console.WriteLine($"Operation: {removeSpecificResult.Data?.DataOperation}");
+
+// Test 6: Remove all records for a domain
+Console.WriteLine("\n--- Test 6: Removing all records for domain 'api.test' ---");
+var removeDomainResult = await piholeClient.Config.RemoveLocalDnsRecordsByDomain("api.test");
+Console.WriteLine($"Result: {removeDomainResult.Data?.Message}");
+Console.WriteLine($"Removed Count: {removeDomainResult.Data?.RemovedCount}");
+Console.WriteLine($"Removed IPs: {string.Join(", ", removeDomainResult.Data?.RemovedIpAddresses ?? [])}");
+
+// Test 8: Remove all records for an IP address
+Console.WriteLine("\n--- Test 7: Removing all records for IP '10.10.10.99' ---");
+var removeIpResult = await piholeClient.Config.RemoveLocalDnsRecordsByIp("10.10.10.99");
+Console.WriteLine($"Result: {removeIpResult.Data?.Message}");
+Console.WriteLine($"Removed Count: {removeIpResult.Data?.RemovedCount}");
+Console.WriteLine($"Removed Domains: {string.Join(", ", removeIpResult.Data?.RemovedDomains ?? [])}");
+
+Console.WriteLine("\n=== DNS Record Management Tests Complete ===\n");
 
 Console.WriteLine("Pulling Pi-hole teleport file...");
 var result = await piholeClient.Teleport.PullPiholeTeleportFile();

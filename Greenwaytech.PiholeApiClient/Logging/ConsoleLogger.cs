@@ -1,5 +1,4 @@
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 namespace Greenwaytech.PiholeApiClient.Logging
 {
     /// <summary>

@@ -3,9 +3,6 @@ using Greenwaytech.PiholeApiClient.Model.Configuration;
 using Greenwaytech.PiholeApiClient.Providers;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace Greenwaytech.PiholeApiClient.Test.Providers;
 
