@@ -10,36 +10,97 @@ using System.Reflection;
 
 namespace Greenwaytech.PiholeApiClient.Test.Tests;
 
-[Parallelizable(ParallelScope.All)]
+/// <summary>
+/// Attribute to mark tests that modify Pi-hole configuration and need baseline restore
+/// </summary>
+[AttributeUsage(AttributeTargets.Method)]
+public class RequiresBaselineRestoreAttribute : Attribute { }
+
+[Parallelizable(ParallelScope.None)]
 [TestFixture]
 public class PiholeApiClientTests
 {
+    private static IContainer? _sharedContainer;
+    private static string? _sharedBaseUrl;
+    private static byte[]? _baselineConfig;
+    private static IPiholeApiClientService? _sharedClient;
 
-    private IContainer? _container;
-    private string? _baseUrl;
+    [OneTimeSetUp]
+    public async Task OneTimeSetup()
+    {
+        // Start container once for all tests
+        _sharedContainer = PiholeTestInstanceProvider.BuildPiholeTestContainer();
+        await _sharedContainer.StartAsync().ConfigureAwait(false);
+        _sharedBaseUrl = _sharedContainer.GetPiholeTestContainerBaseUrl(PiholeTestInstanceProvider.PiholePort);
+        
+        // Small delay to ensure all background services are fully initialized
+        await Task.Delay(5000);
+
+        // Create shared client instance - reuse across all tests
+        _sharedClient = GeneratePiholeApiClientService();
+
+        // Export baseline configuration once to restore before each test
+        var exportResult = await _sharedClient.Teleport.PullPiholeTeleportFile();
+        if (exportResult.IsSuccess && exportResult.Data?.Data != null)
+        {
+            _baselineConfig = exportResult.Data.Data;
+        }
+    }
+
+    [OneTimeTearDown]
+    public async Task OneTimeTeardown()
+    {
+        if (_sharedContainer is not null)
+        {
+            await _sharedContainer.StopAsync();
+            await _sharedContainer.DisposeAsync();
+        }
+    }
 
     [SetUp]
     public async Task Setup()
     {
-        // Each test gets its own container instance for complete isolation
-        _container = PiholeTestInstanceProvider.BuildPiholeTestContainer();
-
-        await _container.StartAsync()
-          .ConfigureAwait(false);
-
-        _baseUrl = _container.GetPiholeTestContainerBaseUrl(PiholeTestInstanceProvider.PiholePort);
+        // Only restore baseline for tests that modify configuration
+        var currentTest = TestContext.CurrentContext.Test;
+        var needsRestore = currentTest?.Method?.GetCustomAttributes<RequiresBaselineRestoreAttribute>(true).Length != 0;
         
-        // Small delay to ensure all background services are fully initialized
-        await Task.Delay(5000);
+        if (!needsRestore)
+        {
+            // Read-only test, no restoration needed
+            return;
+        }
+
+        // Restore baseline configuration for tests that modify state
+        if (_baselineConfig != null && _sharedClient != null)
+        {
+            var importRequest = new Model.Pihole.DTO.PiholeTeleportImportRequest
+            {
+                File = _baselineConfig,
+                PiholeTeleportImportSettings = null // import all to fully reset
+            };
+            
+            var importResult = await _sharedClient.Teleport.PushPiholeTeleportFile(importRequest);
+            if (!importResult.IsSuccess)
+            {
+                // Log warning but don't fail - some tests might still work
+                Console.WriteLine($"Warning: Failed to restore baseline config: {importResult.ErrorMessage}");
+            }
+            
+            // Longer delay to let API sessions cleanup
+            await Task.Delay(2000);
+        }
     }
 
     [TearDown]
     public async Task Teardown()
     {
-        if (_container is not null)
+        // Give API sessions time to cleanup (only for tests that modified state)
+        var currentTest = TestContext.CurrentContext.Test;
+        var needsRestore = currentTest?.Method?.GetCustomAttributes<RequiresBaselineRestoreAttribute>(true).Length != 0;
+        
+        if (needsRestore)
         {
-            await _container.StopAsync();
-            await _container.DisposeAsync();
+            await Task.Delay(1000);
         }
     }
 
@@ -47,7 +108,7 @@ public class PiholeApiClientTests
     public async Task PiholeClient_TeleportPull_ShouldGetFile()
     {
         // Arrange
-        var cut = GeneratePiholeApiClientService();
+        var cut = _sharedClient!;
 
         // Act
         var result = await cut.Teleport.PullPiholeTeleportFile();
@@ -61,7 +122,7 @@ public class PiholeApiClientTests
     public async Task PiholeClient_Config_ShouldGetConfig()
     {
         // Arrange
-        var cut = GeneratePiholeApiClientService();
+        var cut = _sharedClient!;
         // Act
         var result = await cut.Config.GetPiholeConfigAsync();
         // Assert
@@ -74,10 +135,11 @@ public class PiholeApiClientTests
     }
 
     [Test]
+    [RequiresBaselineRestore]
     public async Task PiholeClient_Config_PatchLocalDnsRecordAndReadBack_ShouldSucceed()
     {
         // Arrange
-        var cut = GeneratePiholeApiClientService();
+        var cut = _sharedClient!;
         var getResult = await cut.Config.GetPiholeConfigAsync();
         Assert.That(getResult.IsSuccess, Is.True, getResult.ErrorMessage);
         var originalConfig = getResult.Data?.Config;
@@ -114,10 +176,11 @@ public class PiholeApiClientTests
     }
 
     [Test]
+    [RequiresBaselineRestore]
     public async Task PiholeClient_Teleport_Import_ShouldSucceed()
     {
         // Arrange
-        var cut = GeneratePiholeApiClientService();
+        var cut = _sharedClient!;
         var teleportFileStream = GetPiholeTeleportFileData();
         var knownConfigChangeInTeleportFileHosts = "10.10.10.10 testrecord.local";
         Assert.That(teleportFileStream, Is.Not.Null, "Could not get Teleportfile for testing.");
@@ -157,10 +220,11 @@ public class PiholeApiClientTests
     #region DNS Record Management Tests
 
     [Test]
+    [RequiresBaselineRestore]
     public async Task PiholeClient_DnsRecord_EnsureLocalDnsRecord_ShouldAddNewRecord()
     {
         // Arrange
-        var cut = GeneratePiholeApiClientService();
+        var cut = _sharedClient!;
         var testDomain = $"test-{Guid.NewGuid():N}.local";
         var testIp = "192.168.100.1";
         
@@ -181,16 +245,14 @@ public class PiholeApiClientTests
 
         var config = await cut.Config.GetPiholeConfigAsync();
         Assert.That(config.Data?.Config?.Dns?.Hosts, Does.Contain($"{testIp} {testDomain}"));
-
-        // Cleanup
-        await cut.Config.RemoveLocalDnsRecordsByDomain(testDomain);
     }
 
     [Test]
+    [RequiresBaselineRestore]
     public async Task PiholeClient_DnsRecord_EnsureLocalDnsRecord_ShouldReturnAlreadyExistsForDuplicate()
     {
         // Arrange
-        var cut = GeneratePiholeApiClientService();
+        var cut = _sharedClient!;
         var testDomain = $"test-{Guid.NewGuid():N}.local";
         var testIp = "192.168.100.2";
         
@@ -211,16 +273,14 @@ public class PiholeApiClientTests
         Assert.That(secondResult.IsSuccess, Is.True);
         Assert.That(secondResult.Data?.DataOperation, Is.EqualTo(DataOperation.AlreadyExists));
         Assert.That(secondResult.Data?.Message, Does.Contain("already exists"));
-
-        // Cleanup
-        await cut.Config.RemoveLocalDnsRecordsByDomain(testDomain);
     }
 
     [Test]
+    [RequiresBaselineRestore]
     public async Task PiholeClient_DnsRecord_EnsureLocalDnsRecord_ShouldDetectConflictForSameDomainDifferentIP()
     {
         // Arrange
-        var cut = GeneratePiholeApiClientService();
+        var cut = _sharedClient!;
         var testDomain = $"test-{Guid.NewGuid():N}.local";
         var firstIp = "192.168.100.3";
         var secondIp = "192.168.100.4";
@@ -253,10 +313,11 @@ public class PiholeApiClientTests
     }
 
     [Test]
+    [RequiresBaselineRestore]
     public async Task PiholeClient_DnsRecord_EnsureLocalDnsRecord_ShouldAllowMultipleDomainsForSameIP()
     {
         // Arrange
-        var cut = GeneratePiholeApiClientService();
+        var cut = _sharedClient!;
         var testIp = "192.168.100.5";
         var domain1 = $"test1-{Guid.NewGuid():N}.local";
         var domain2 = $"test2-{Guid.NewGuid():N}.local";
@@ -280,16 +341,14 @@ public class PiholeApiClientTests
         Assert.That(config.Data?.Config?.Dns?.Hosts, Does.Contain($"{testIp} {domain1}"));
         Assert.That(config.Data?.Config?.Dns?.Hosts, Does.Contain($"{testIp} {domain2}"));
         Assert.That(config.Data?.Config?.Dns?.Hosts, Does.Contain($"{testIp} {domain3}"));
-
-        // Cleanup
-        await cut.Config.RemoveLocalDnsRecordsByIp(testIp);
     }
 
     [Test]
+    [RequiresBaselineRestore]
     public async Task PiholeClient_DnsRecord_RemoveLocalDnsRecord_ShouldRemoveSpecificRecord()
     {
         // Arrange
-        var cut = GeneratePiholeApiClientService();
+        var cut = _sharedClient!;
         var testDomain = $"test-{Guid.NewGuid():N}.local";
         var testIp = "192.168.100.6";
         
@@ -310,10 +369,11 @@ public class PiholeApiClientTests
     }
 
     [Test]
+    [RequiresBaselineRestore]
     public async Task PiholeClient_DnsRecord_RemoveLocalDnsRecordsByDomain_ShouldRemoveAllRecordsForDomain()
     {
         // Arrange
-        var cut = GeneratePiholeApiClientService();
+        var cut = _sharedClient!;
         var testDomain = $"test-{Guid.NewGuid():N}.local";
         var ip1 = "192.168.100.7";
         var ip2 = "192.168.100.8";
@@ -340,10 +400,11 @@ public class PiholeApiClientTests
     }
 
     [Test]
+    [RequiresBaselineRestore]
     public async Task PiholeClient_DnsRecord_RemoveLocalDnsRecordsByIp_ShouldRemoveAllDomainsForIP()
     {
         // Arrange
-        var cut = GeneratePiholeApiClientService();
+        var cut = _sharedClient!;
         var testIp = "192.168.100.9";
         var domain1 = $"test1-{Guid.NewGuid():N}.local";
         var domain2 = $"test2-{Guid.NewGuid():N}.local";
@@ -374,10 +435,11 @@ public class PiholeApiClientTests
     }
 
     [Test]
+    [RequiresBaselineRestore]
     public async Task PiholeClient_DnsRecord_RemoveNonExistent_ShouldReturnNotFound()
     {
         // Arrange
-        var cut = GeneratePiholeApiClientService();
+        var cut = _sharedClient!;
         var nonExistentDomain = $"nonexistent-{Guid.NewGuid():N}.local";
 
         // Act
@@ -393,7 +455,7 @@ public class PiholeApiClientTests
     public async Task PiholeClient_DnsRecord_EnsureLocalDnsRecord_ShouldValidateIpAddress()
     {
         // Arrange
-        var cut = GeneratePiholeApiClientService();
+        var cut = _sharedClient!;
         var request = new LocalDnsRecordRequest
         {
             Domain = "test.local",
@@ -412,7 +474,7 @@ public class PiholeApiClientTests
     public async Task PiholeClient_DnsRecord_EnsureLocalDnsRecord_ShouldValidateDomain()
     {
         // Arrange
-        var cut = GeneratePiholeApiClientService();
+        var cut = _sharedClient!;
         var request = new LocalDnsRecordRequest
         {
             Domain = "", // Empty domain
@@ -428,10 +490,11 @@ public class PiholeApiClientTests
     }
 
     [Test]
+    [RequiresBaselineRestore]
     public async Task PiholeClient_DnsRecord_CompleteWorkflow_AddConflictResolveRemove()
     {
         // Arrange
-        var cut = GeneratePiholeApiClientService();
+        var cut = _sharedClient!;
         var testDomain = $"workflow-{Guid.NewGuid():N}.local";
         var ip1 = "192.168.100.10";
         var ip2 = "192.168.100.11";
@@ -460,16 +523,14 @@ public class PiholeApiClientTests
         var config = await cut.Config.GetPiholeConfigAsync();
         Assert.That(config.Data?.Config?.Dns?.Hosts, Does.Contain($"{ip2} {testDomain}"));
         Assert.That(config.Data?.Config?.Dns?.Hosts, Does.Not.Contain($"{ip1} {testDomain}"));
-
-        // Cleanup
-        await cut.Config.RemoveLocalDnsRecordsByDomain(testDomain);
     }
 
     [Test]
+    [RequiresBaselineRestore]
     public async Task PiholeClient_DnsRecord_EnsureLocalDnsRecord_WithOverwriteExisting_ShouldReplaceRecord()
     {
         // Arrange
-        var cut = GeneratePiholeApiClientService();
+        var cut = _sharedClient!;
         var testDomain = $"overwrite-{Guid.NewGuid():N}.local";
         var ip1 = "192.168.100.20";
         var ip2 = "192.168.100.21";
@@ -497,16 +558,14 @@ public class PiholeApiClientTests
         var config = await cut.Config.GetPiholeConfigAsync();
         Assert.That(config.Data?.Config?.Dns?.Hosts, Does.Contain($"{ip2} {testDomain}"));
         Assert.That(config.Data?.Config?.Dns?.Hosts, Does.Not.Contain($"{ip1} {testDomain}"));
-
-        // Cleanup
-        await cut.Config.RemoveLocalDnsRecordsByDomain(testDomain);
     }
 
     [Test]
+    [RequiresBaselineRestore]
     public async Task PiholeClient_DnsRecord_EnsureLocalDnsRecord_WithIPv6_ShouldWork()
     {
         // Arrange
-        var cut = GeneratePiholeApiClientService();
+        var cut = _sharedClient!;
         var testDomain = $"ipv6-{Guid.NewGuid():N}.local";
         var testIpv6 = "2001:0db8:85a3::8a2e:0370:7334";
 
@@ -528,16 +587,14 @@ public class PiholeApiClientTests
         var recordExists = config.Data?.Config?.Dns?.Hosts?.Any(h => 
             h.Contains(testDomain, StringComparison.OrdinalIgnoreCase)) ?? false;
         Assert.That(recordExists, Is.True, "IPv6 record should exist in configuration");
-
-        // Cleanup
-        await cut.Config.RemoveLocalDnsRecordsByDomain(testDomain);
     }
 
     [Test]
+    [RequiresBaselineRestore]
     public async Task PiholeClient_DnsRecord_EnsureLocalDnsRecord_IdempotencyTest()
     {
         // Arrange
-        var cut = GeneratePiholeApiClientService();
+        var cut = _sharedClient!;
         var testDomain = $"idempotent-{Guid.NewGuid():N}.local";
         var testIp = "192.168.100.30";
         var request = new LocalDnsRecordRequest { Domain = testDomain, IpAddress = testIp };
@@ -562,16 +619,14 @@ public class PiholeApiClientTests
         var recordCount = config.Data?.Config?.Dns?.Hosts?.Count(h => 
             h.Contains(testDomain, StringComparison.OrdinalIgnoreCase)) ?? 0;
         Assert.That(recordCount, Is.EqualTo(1), "Should only have one record despite multiple calls");
-
-        // Cleanup
-        await cut.Config.RemoveLocalDnsRecordsByDomain(testDomain);
     }
 
     [Test]
+    [RequiresBaselineRestore]
     public async Task PiholeClient_DnsRecord_RemoveSpecificRecord_WithMultipleDuplicates_ShouldRemoveOnlyOne()
     {
         // Arrange
-        var cut = GeneratePiholeApiClientService();
+        var cut = _sharedClient!;
         var testDomain = $"duplicate-{Guid.NewGuid():N}.local";
         var testIp = "192.168.100.40";
         
@@ -593,16 +648,14 @@ public class PiholeApiClientTests
         // Verify other record still exists
         var config = await cut.Config.GetPiholeConfigAsync();
         Assert.That(config.Data?.Config?.Dns?.Hosts, Does.Contain($"{testIp} {otherDomain}"));
-
-        // Cleanup
-        await cut.Config.RemoveLocalDnsRecordsByIp(testIp);
     }
 
     [Test]
+    [RequiresBaselineRestore]
     public async Task PiholeClient_DnsRecord_ValidateLocalDnsConfig_WithValidConfig_ShouldReturnValid()
     {
         // Arrange
-        var cut = GeneratePiholeApiClientService();
+        var cut = _sharedClient!;
         var testDomain1 = $"valid1-{Guid.NewGuid():N}.local";
         var testDomain2 = $"valid2-{Guid.NewGuid():N}.local";
         
@@ -617,17 +670,14 @@ public class PiholeApiClientTests
         Assert.That(validationResult.IsSuccess, Is.True);
         Assert.That(validationResult.Data.Valid, Is.True);
         Assert.That(validationResult.Data.ErrorMessage, Is.Empty.Or.Null);
-
-        // Cleanup
-        await cut.Config.RemoveLocalDnsRecordsByDomain(testDomain1);
-        await cut.Config.RemoveLocalDnsRecordsByDomain(testDomain2);
     }
 
     [Test]
+    [RequiresBaselineRestore]
     public async Task PiholeClient_DnsRecord_CaseInsensitiveDomainHandling()
     {
         // Arrange
-        var cut = GeneratePiholeApiClientService();
+        var cut = _sharedClient!;
         var testDomain = $"CaseSensitive-{Guid.NewGuid():N}.Local";
         var testIp = "192.168.100.60";
 
@@ -650,16 +700,13 @@ public class PiholeApiClientTests
         // Assert: Should recognize as duplicate (case-insensitive)
         Assert.That(duplicateResult.IsSuccess, Is.True);
         Assert.That(duplicateResult.Data?.DataOperation, Is.EqualTo(DataOperation.AlreadyExists));
-
-        // Cleanup
-        await cut.Config.RemoveLocalDnsRecordsByDomain(testDomain);
     }
 
     [Test]
     public async Task PiholeClient_DnsRecord_RemoveFromEmptyConfig_ShouldHandleGracefully()
     {
         // Arrange
-        var cut = GeneratePiholeApiClientService();
+        var cut = _sharedClient!;
         var nonExistentDomain = $"never-existed-{Guid.NewGuid():N}.local";
 
         // Act: Try to remove from potentially empty list
@@ -672,10 +719,11 @@ public class PiholeApiClientTests
     }
 
     [Test]
+    [RequiresBaselineRestore]
     public async Task PiholeClient_DnsRecord_LargeBatchOperations_ShouldHandleMultipleRecords()
     {
         // Arrange
-        var cut = GeneratePiholeApiClientService();
+        var cut = _sharedClient!;
         var testIpBase = "192.168.101";
         var domains = new List<string>();
         var recordCount = 10;
@@ -715,10 +763,11 @@ public class PiholeApiClientTests
     }
 
     [Test]
+    [RequiresBaselineRestore]
     public async Task PiholeClient_DnsRecord_SpecialCharactersInDomain_ShouldValidate()
     {
         // Arrange
-        var cut = GeneratePiholeApiClientService();
+        var cut = _sharedClient!;
         var validDomainWithHyphens = $"my-api-server-{Guid.NewGuid():N}.local";
         var testIp = "192.168.100.70";
 
@@ -732,16 +781,14 @@ public class PiholeApiClientTests
         // Assert
         Assert.That(result.IsSuccess, Is.True);
         Assert.That(result.Data?.DataOperation, Is.EqualTo(DataOperation.Created));
-
-        // Cleanup
-        await cut.Config.RemoveLocalDnsRecordsByDomain(validDomainWithHyphens);
     }
 
     [Test]
+    [RequiresBaselineRestore]
     public async Task PiholeClient_DnsRecord_ConflictWithOverwriteFalse_ShouldProvideConflictDetails()
     {
         // Arrange
-        var cut = GeneratePiholeApiClientService();
+        var cut = _sharedClient!;
         var testDomain = $"conflict-detail-{Guid.NewGuid():N}.local";
         var ip1 = "192.168.100.80";
         var ip2 = "192.168.100.81";
@@ -764,9 +811,6 @@ public class PiholeApiClientTests
         Assert.That(conflictResult.Data?.ConflictingIpAddresses, Does.Contain(ip1));
         Assert.That(conflictResult.Data?.Message, Does.Contain(testDomain));
         Assert.That(conflictResult.Data?.Message, Does.Contain(ip1));
-
-        // Cleanup
-        await cut.Config.RemoveLocalDnsRecordsByDomain(testDomain);
     }
 
     #endregion
@@ -774,7 +818,7 @@ public class PiholeApiClientTests
     private IOptions<PiHoleInstanceApiConfig> GetPiholeConfigOptions() 
         => Options.Create(new PiHoleInstanceApiConfig
     {
-        ApiBaseUrl = _baseUrl ?? throw new InvalidOperationException("Base URL is not set"),
+        ApiBaseUrl = _sharedBaseUrl ?? throw new InvalidOperationException("Base URL is not set"),
         ApiKey = PiholeTestInstanceProvider.PiholePassword
     });
 

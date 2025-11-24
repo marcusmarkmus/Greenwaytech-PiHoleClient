@@ -397,7 +397,7 @@ public class DnsRecordExtensionsTests
         // Assert
         Assert.That(result.WasAdded, Is.False);
         Assert.That(result.AlreadyExists, Is.True);
-        Assert.That(result.UpdatedRecords, Is.Empty);
+        Assert.That(result.UpdatedRecords, Is.EqualTo(records));
         Assert.That(result.Message, Does.Contain("already exists"));
     }
 
@@ -546,7 +546,7 @@ public class DnsRecordExtensionsTests
         // Assert
         Assert.That(result.WasRemoved, Is.False);
         Assert.That(result.RemovedCount, Is.EqualTo(0));
-        Assert.That(result.Message, Does.Contain("not found"));
+        Assert.That(result.Message, Does.Contain("No DNS records found for domain"));
     }
 
     [Test]
