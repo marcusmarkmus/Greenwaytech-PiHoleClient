@@ -97,7 +97,7 @@ jobs:
           check_name: 'Test Results'
 
       - name: NuGet Push (publish if version changed)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: ./.github/actions/nuget-push
         with:
           project_path: ${{ env.PROJECT_PATH }}
