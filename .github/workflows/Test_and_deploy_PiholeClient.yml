@@ -36,6 +36,7 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: |
+            10.0.x
             9.0.x
 
       - name: Cache NuGet packages
@@ -63,8 +64,11 @@ jobs:
           dotnet test "$TEST_PROJECT_PATH" -c "$CONFIGURATION" --no-build \
             --collect:"XPlat Code Coverage" \
             --logger "trx;LogFileName=test_results.trx" \
-            --results-directory "$TEST_RESULTS_DIR"
-
+            --results-directory "$TEST_RESULTS_DIR" \
+            -- NUnit.DefaultTimeout=120000
+        timeout-minutes: 30
+        env:
+          CI: true
 
       - name: Generate HTML coverage report
         uses: danielpalme/ReportGenerator-GitHub-Action@v5
@@ -77,7 +81,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-and-coverage-${{ matrix.os }}-${{ matrix.dotnet }}
+          name: test-and-coverage-results
           path: |
             ${{ env.TEST_RESULTS_DIR }}/**/*.trx
             ${{ env.TEST_RESULTS_DIR }}/**/coverage.cobertura.xml
@@ -90,7 +94,7 @@ jobs:
         uses: EnricoMi/publish-unit-test-result-action@v2
         with:
           files: ${{ env.TEST_RESULTS_DIR }}/**/*.trx
-          check_name: 'Test Results (${{ matrix.os }} / .NET ${{ matrix.dotnet }})'
+          check_name: 'Test Results'
 
       - name: NuGet Push (publish if version changed)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'

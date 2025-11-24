@@ -11,12 +11,10 @@ public interface IPiholeConfigClient
     /// By default, prevents creating duplicate domains pointing to different IPs.
     /// </summary>
     /// <param name="localDnsRecordRequest">DNS record to ensure exists</param>
-    /// <param name="allowDuplicateDomains">If true, allows same domain to point to multiple IPs (not recommended)</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Response indicating if record was created, already existed, or has conflicts</returns>
     Task<PiholeClientApiResponse<EnsureLocalDnsRecordResponse>> EnsureLocalDnsRecord(
         LocalDnsRecordRequest localDnsRecordRequest,
-        bool allowDuplicateDomains = false,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -68,5 +66,13 @@ public interface IPiholeConfigClient
     /// <returns>Response indicating how many records were removed</returns>
     Task<PiholeClientApiResponse<EnsureLocalDnsRecordResponse>> RemoveLocalDnsRecordsByIp(
         string ipAddress,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Validates the current local DNS configuration and returns the result of the validation operation.
+    /// </summary>
+    /// <param name="cancellationToken">A cancellation token that can be used to cancel the validation operation.</param>
+    /// <returns>A task that represents the asynchronous operation. The task result contains a response with a tuple indicating whether the configuration is valid and an error message if validation fails.</returns>
+    Task<PiholeClientApiResponse<(bool Valid, string ErrorMessage)>> ValidateLocalDnsConfig(
         CancellationToken cancellationToken = default);
 }

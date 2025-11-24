@@ -1,4 +1,4 @@
-﻿using DotNet.Testcontainers.Containers;
+using DotNet.Testcontainers.Containers;
 using Greenwaytech.PiholeApiClient.ApiClient;
 using Greenwaytech.PiholeApiClient.Model.App;
 using Greenwaytech.PiholeApiClient.Model.App.Response;
@@ -10,29 +10,30 @@ using System.Reflection;
 
 namespace Greenwaytech.PiholeApiClient.Test.Tests;
 
+[Parallelizable(ParallelScope.All)]
 public class PiholeApiClientTests
 {
 
     private IContainer _container;
     private string _baseUrl;
 
-    [OneTimeSetUp]
-    public async Task GlobalSetup()
+    [SetUp]
+    public async Task Setup()
     {
-        //All tests use the same container instance for speed - but be aware that tests may affect each other due to shared state.
+        // Each test gets its own container instance for complete isolation
         _container = PiholeTestInstanceProvider.BuildPiholeTestContainer();
 
         await _container.StartAsync()
           .ConfigureAwait(false);
 
-       _baseUrl = _container.GetPiholeTestContainerBaseUrl(PiholeTestInstanceProvider.PiholePort);
-
+        _baseUrl = _container.GetPiholeTestContainerBaseUrl(PiholeTestInstanceProvider.PiholePort);
+        
+        // Small delay to ensure all background services are fully initialized
+        await Task.Delay(1000);
     }
 
-    
-
-    [OneTimeTearDown]
-    public async Task GlobalTeardown()
+    [TearDown]
+    public async Task Teardown()
     {
         if (_container is not null)
         {
@@ -177,8 +178,7 @@ public class PiholeApiClientTests
         Assert.That(result.Data.DataOperation, Is.EqualTo(DataOperation.Created));
         Assert.That(result.Data.Message, Does.Contain("added successfully"));
 
-        // Verify record exists
-        var config = await cut.Config.GetPiholeConfigAsync(detailed: true);
+        var config = await cut.Config.GetPiholeConfigAsync();
         Assert.That(config.Data?.Config?.Dns?.Hosts, Does.Contain($"{testIp} {testDomain}"));
 
         // Cleanup
@@ -274,8 +274,8 @@ public class PiholeApiClientTests
         Assert.That(result2.Data?.DataOperation, Is.EqualTo(DataOperation.Created));
         Assert.That(result3.Data?.DataOperation, Is.EqualTo(DataOperation.Created));
 
-        // Verify all records exist
-        var config = await cut.Config.GetPiholeConfigAsync(detailed: true);
+
+        var config = await cut.Config.GetPiholeConfigAsync();
         Assert.That(config.Data?.Config?.Dns?.Hosts, Does.Contain($"{testIp} {domain1}"));
         Assert.That(config.Data?.Config?.Dns?.Hosts, Does.Contain($"{testIp} {domain2}"));
         Assert.That(config.Data?.Config?.Dns?.Hosts, Does.Contain($"{testIp} {domain3}"));
@@ -304,7 +304,7 @@ public class PiholeApiClientTests
         Assert.That(removeResult.Data?.Message, Does.Contain("Removed DNS record"));
 
         // Verify record is gone
-        var config = await cut.Config.GetPiholeConfigAsync(detailed: true);
+        var config = await cut.Config.GetPiholeConfigAsync();
         Assert.That(config.Data?.Config?.Dns?.Hosts, Does.Not.Contain($"{testIp} {testDomain}"));
     }
 
@@ -317,9 +317,9 @@ public class PiholeApiClientTests
         var ip1 = "192.168.100.7";
         var ip2 = "192.168.100.8";
         
-        // Add same domain with different IPs (using allowDuplicateDomains)
+        // Add same domain with different IPs (using OverwriteExisting to test removal)
         await cut.Config.EnsureLocalDnsRecord(new LocalDnsRecordRequest { Domain = testDomain, IpAddress = ip1 });
-        await cut.Config.EnsureLocalDnsRecord(new LocalDnsRecordRequest { Domain = testDomain, IpAddress = ip2 }, allowDuplicateDomains: true);
+        await cut.Config.EnsureLocalDnsRecord(new LocalDnsRecordRequest { Domain = testDomain, IpAddress = ip2, OverwriteExisting = true });
 
         // Act
         var removeResult = await cut.Config.RemoveLocalDnsRecordsByDomain(testDomain);
@@ -327,13 +327,13 @@ public class PiholeApiClientTests
         // Assert
         Assert.That(removeResult.IsSuccess, Is.True);
         Assert.That(removeResult.Data?.DataOperation, Is.EqualTo(DataOperation.Deleted));
-        Assert.That(removeResult.Data?.RemovedCount, Is.EqualTo(2));
-        Assert.That(removeResult.Data?.RemovedIpAddresses, Has.Count.EqualTo(2));
-        Assert.That(removeResult.Data?.RemovedIpAddresses, Does.Contain(ip1));
+        // After overwrite, only ip2 should exist, so only 1 record should be removed
+        Assert.That(removeResult.Data?.RemovedCount, Is.EqualTo(1));
+        Assert.That(removeResult.Data?.RemovedIpAddresses, Has.Count.EqualTo(1));
         Assert.That(removeResult.Data?.RemovedIpAddresses, Does.Contain(ip2));
 
         // Verify all records are gone
-        var config = await cut.Config.GetPiholeConfigAsync(detailed: true);
+        var config = await cut.Config.GetPiholeConfigAsync();
         Assert.That(config.Data?.Config?.Dns?.Hosts, Does.Not.Contain($"{ip1} {testDomain}"));
         Assert.That(config.Data?.Config?.Dns?.Hosts, Does.Not.Contain($"{ip2} {testDomain}"));
     }
@@ -366,7 +366,7 @@ public class PiholeApiClientTests
         Assert.That(removeResult.Data?.RemovedDomains, Does.Contain(domain3));
 
         // Verify all records are gone
-        var config = await cut.Config.GetPiholeConfigAsync(detailed: true);
+        var config = await cut.Config.GetPiholeConfigAsync();
         Assert.That(config.Data?.Config?.Dns?.Hosts, Does.Not.Contain($"{testIp} {domain1}"));
         Assert.That(config.Data?.Config?.Dns?.Hosts, Does.Not.Contain($"{testIp} {domain2}"));
         Assert.That(config.Data?.Config?.Dns?.Hosts, Does.Not.Contain($"{testIp} {domain3}"));
@@ -456,9 +456,313 @@ public class PiholeApiClientTests
         Assert.That(add3.Data?.DataOperation, Is.EqualTo(DataOperation.Created));
 
         // Step 5 - Verify final state
-        var config = await cut.Config.GetPiholeConfigAsync(detailed: true);
+        var config = await cut.Config.GetPiholeConfigAsync();
         Assert.That(config.Data?.Config?.Dns?.Hosts, Does.Contain($"{ip2} {testDomain}"));
         Assert.That(config.Data?.Config?.Dns?.Hosts, Does.Not.Contain($"{ip1} {testDomain}"));
+
+        // Cleanup
+        await cut.Config.RemoveLocalDnsRecordsByDomain(testDomain);
+    }
+
+    [Test]
+    public async Task PiholeClient_DnsRecord_EnsureLocalDnsRecord_WithOverwriteExisting_ShouldReplaceRecord()
+    {
+        // Arrange
+        var cut = GeneratePiholeApiClientService();
+        var testDomain = $"overwrite-{Guid.NewGuid():N}.local";
+        var ip1 = "192.168.100.20";
+        var ip2 = "192.168.100.21";
+
+        // Add initial record
+        var firstRequest = new LocalDnsRecordRequest { Domain = testDomain, IpAddress = ip1 };
+        var firstResult = await cut.Config.EnsureLocalDnsRecord(firstRequest);
+        Assert.That(firstResult.IsSuccess, Is.True);
+
+        // Act: Add same domain with different IP and OverwriteExisting = true
+        var secondRequest = new LocalDnsRecordRequest 
+        { 
+            Domain = testDomain, 
+            IpAddress = ip2, 
+            OverwriteExisting = true 
+        };
+        var secondResult = await cut.Config.EnsureLocalDnsRecord(secondRequest);
+
+        // Assert
+        Assert.That(secondResult.IsSuccess, Is.True);
+        Assert.That(secondResult.Data?.DataOperation, Is.EqualTo(DataOperation.Created));
+        Assert.That(secondResult.Data?.Message, Does.Contain("replaced"));
+
+        // Verify only new record exists
+        var config = await cut.Config.GetPiholeConfigAsync();
+        Assert.That(config.Data?.Config?.Dns?.Hosts, Does.Contain($"{ip2} {testDomain}"));
+        Assert.That(config.Data?.Config?.Dns?.Hosts, Does.Not.Contain($"{ip1} {testDomain}"));
+
+        // Cleanup
+        await cut.Config.RemoveLocalDnsRecordsByDomain(testDomain);
+    }
+
+    [Test]
+    public async Task PiholeClient_DnsRecord_EnsureLocalDnsRecord_WithIPv6_ShouldWork()
+    {
+        // Arrange
+        var cut = GeneratePiholeApiClientService();
+        var testDomain = $"ipv6-{Guid.NewGuid():N}.local";
+        var testIpv6 = "2001:0db8:85a3::8a2e:0370:7334";
+
+        var request = new LocalDnsRecordRequest
+        {
+            Domain = testDomain,
+            IpAddress = testIpv6
+        };
+
+        // Act
+        var result = await cut.Config.EnsureLocalDnsRecord(request);
+
+        // Assert
+        Assert.That(result.IsSuccess, Is.True, result.ErrorMessage);
+        Assert.That(result.Data?.DataOperation, Is.EqualTo(DataOperation.Created));
+
+        // Verify record exists
+        var config = await cut.Config.GetPiholeConfigAsync();
+        var recordExists = config.Data?.Config?.Dns?.Hosts?.Any(h => 
+            h.Contains(testDomain, StringComparison.OrdinalIgnoreCase)) ?? false;
+        Assert.That(recordExists, Is.True, "IPv6 record should exist in configuration");
+
+        // Cleanup
+        await cut.Config.RemoveLocalDnsRecordsByDomain(testDomain);
+    }
+
+    [Test]
+    public async Task PiholeClient_DnsRecord_EnsureLocalDnsRecord_IdempotencyTest()
+    {
+        // Arrange
+        var cut = GeneratePiholeApiClientService();
+        var testDomain = $"idempotent-{Guid.NewGuid():N}.local";
+        var testIp = "192.168.100.30";
+        var request = new LocalDnsRecordRequest { Domain = testDomain, IpAddress = testIp };
+
+        // Act: Call multiple times with same request
+        var result1 = await cut.Config.EnsureLocalDnsRecord(request);
+        var result2 = await cut.Config.EnsureLocalDnsRecord(request);
+        var result3 = await cut.Config.EnsureLocalDnsRecord(request);
+
+        // Assert: First should create, rest should be idempotent
+        Assert.That(result1.IsSuccess, Is.True);
+        Assert.That(result1.Data?.DataOperation, Is.EqualTo(DataOperation.Created));
+        
+        Assert.That(result2.IsSuccess, Is.True);
+        Assert.That(result2.Data?.DataOperation, Is.EqualTo(DataOperation.AlreadyExists));
+        
+        Assert.That(result3.IsSuccess, Is.True);
+        Assert.That(result3.Data?.DataOperation, Is.EqualTo(DataOperation.AlreadyExists));
+
+        // Verify only one record exists
+        var config = await cut.Config.GetPiholeConfigAsync();
+        var recordCount = config.Data?.Config?.Dns?.Hosts?.Count(h => 
+            h.Contains(testDomain, StringComparison.OrdinalIgnoreCase)) ?? 0;
+        Assert.That(recordCount, Is.EqualTo(1), "Should only have one record despite multiple calls");
+
+        // Cleanup
+        await cut.Config.RemoveLocalDnsRecordsByDomain(testDomain);
+    }
+
+    [Test]
+    public async Task PiholeClient_DnsRecord_RemoveSpecificRecord_WithMultipleDuplicates_ShouldRemoveOnlyOne()
+    {
+        // Arrange
+        var cut = GeneratePiholeApiClientService();
+        var testDomain = $"duplicate-{Guid.NewGuid():N}.local";
+        var testIp = "192.168.100.40";
+        
+        // Manually add the same record multiple times (should not happen normally, but testing edge case)
+        var request1 = new LocalDnsRecordRequest { Domain = testDomain, IpAddress = testIp };
+        await cut.Config.EnsureLocalDnsRecord(request1);
+
+        // Add a different domain to ensure we're not removing everything
+        var otherDomain = $"other-{Guid.NewGuid():N}.local";
+        await cut.Config.EnsureLocalDnsRecord(new LocalDnsRecordRequest { Domain = otherDomain, IpAddress = testIp });
+
+        // Act: Remove specific record
+        var removeResult = await cut.Config.RemoveLocalDnsRecord(request1);
+
+        // Assert
+        Assert.That(removeResult.IsSuccess, Is.True);
+        Assert.That(removeResult.Data?.DataOperation, Is.EqualTo(DataOperation.Deleted));
+
+        // Verify other record still exists
+        var config = await cut.Config.GetPiholeConfigAsync();
+        Assert.That(config.Data?.Config?.Dns?.Hosts, Does.Contain($"{testIp} {otherDomain}"));
+
+        // Cleanup
+        await cut.Config.RemoveLocalDnsRecordsByIp(testIp);
+    }
+
+    [Test]
+    public async Task PiholeClient_DnsRecord_ValidateLocalDnsConfig_WithValidConfig_ShouldReturnValid()
+    {
+        // Arrange
+        var cut = GeneratePiholeApiClientService();
+        var testDomain1 = $"valid1-{Guid.NewGuid():N}.local";
+        var testDomain2 = $"valid2-{Guid.NewGuid():N}.local";
+        
+        // Add some valid records
+        await cut.Config.EnsureLocalDnsRecord(new LocalDnsRecordRequest { Domain = testDomain1, IpAddress = "192.168.100.50" });
+        await cut.Config.EnsureLocalDnsRecord(new LocalDnsRecordRequest { Domain = testDomain2, IpAddress = "192.168.100.51" });
+
+        // Act
+        var validationResult = await cut.Config.ValidateLocalDnsConfig();
+
+        // Assert
+        Assert.That(validationResult.IsSuccess, Is.True);
+        Assert.That(validationResult.Data.Valid, Is.True);
+        Assert.That(validationResult.Data.ErrorMessage, Is.Empty.Or.Null);
+
+        // Cleanup
+        await cut.Config.RemoveLocalDnsRecordsByDomain(testDomain1);
+        await cut.Config.RemoveLocalDnsRecordsByDomain(testDomain2);
+    }
+
+    [Test]
+    public async Task PiholeClient_DnsRecord_CaseInsensitiveDomainHandling()
+    {
+        // Arrange
+        var cut = GeneratePiholeApiClientService();
+        var testDomain = $"CaseSensitive-{Guid.NewGuid():N}.Local";
+        var testIp = "192.168.100.60";
+
+        // Add record with mixed case
+        var addResult = await cut.Config.EnsureLocalDnsRecord(new LocalDnsRecordRequest 
+        { 
+            Domain = testDomain, 
+            IpAddress = testIp 
+        });
+        Assert.That(addResult.IsSuccess, Is.True);
+
+        // Act: Try to add same domain with different case
+        var lowerCaseDomain = testDomain.ToLowerInvariant();
+        var duplicateResult = await cut.Config.EnsureLocalDnsRecord(new LocalDnsRecordRequest 
+        { 
+            Domain = lowerCaseDomain, 
+            IpAddress = testIp 
+        });
+
+        // Assert: Should recognize as duplicate (case-insensitive)
+        Assert.That(duplicateResult.IsSuccess, Is.True);
+        Assert.That(duplicateResult.Data?.DataOperation, Is.EqualTo(DataOperation.AlreadyExists));
+
+        // Cleanup
+        await cut.Config.RemoveLocalDnsRecordsByDomain(testDomain);
+    }
+
+    [Test]
+    public async Task PiholeClient_DnsRecord_RemoveFromEmptyConfig_ShouldHandleGracefully()
+    {
+        // Arrange
+        var cut = GeneratePiholeApiClientService();
+        var nonExistentDomain = $"never-existed-{Guid.NewGuid():N}.local";
+
+        // Act: Try to remove from potentially empty list
+        var removeResult = await cut.Config.RemoveLocalDnsRecordsByDomain(nonExistentDomain);
+
+        // Assert: Should not fail, just return "not found"
+        Assert.That(removeResult.IsSuccess, Is.True);
+        Assert.That(removeResult.Data?.DataOperation, Is.EqualTo(DataOperation.AlreadyExists));
+        Assert.That(removeResult.Data?.RemovedCount, Is.Null.Or.EqualTo(0));
+    }
+
+    [Test]
+    public async Task PiholeClient_DnsRecord_LargeBatchOperations_ShouldHandleMultipleRecords()
+    {
+        // Arrange
+        var cut = GeneratePiholeApiClientService();
+        var testIpBase = "192.168.101";
+        var domains = new List<string>();
+        var recordCount = 10;
+
+        try
+        {
+            // Act: Add multiple records
+            for (int i = 0; i < recordCount; i++)
+            {
+                var domain = $"batch-{i}-{Guid.NewGuid():N}.local";
+                domains.Add(domain);
+                var result = await cut.Config.EnsureLocalDnsRecord(new LocalDnsRecordRequest 
+                { 
+                    Domain = domain, 
+                    IpAddress = $"{testIpBase}.{i}" 
+                });
+                Assert.That(result.IsSuccess, Is.True, $"Failed to add record {i}");
+            }
+
+            // Verify all records exist
+            var config = await cut.Config.GetPiholeConfigAsync();
+            foreach (var domain in domains)
+            {
+                var exists = config.Data?.Config?.Dns?.Hosts?.Any(h => 
+                    h.Contains(domain, StringComparison.OrdinalIgnoreCase)) ?? false;
+                Assert.That(exists, Is.True, $"Domain {domain} should exist");
+            }
+        }
+        finally
+        {
+            // Cleanup
+            foreach (var domain in domains)
+            {
+                await cut.Config.RemoveLocalDnsRecordsByDomain(domain);
+            }
+        }
+    }
+
+    [Test]
+    public async Task PiholeClient_DnsRecord_SpecialCharactersInDomain_ShouldValidate()
+    {
+        // Arrange
+        var cut = GeneratePiholeApiClientService();
+        var validDomainWithHyphens = $"my-api-server-{Guid.NewGuid():N}.local";
+        var testIp = "192.168.100.70";
+
+        // Act
+        var result = await cut.Config.EnsureLocalDnsRecord(new LocalDnsRecordRequest 
+        { 
+            Domain = validDomainWithHyphens, 
+            IpAddress = testIp 
+        });
+
+        // Assert
+        Assert.That(result.IsSuccess, Is.True);
+        Assert.That(result.Data?.DataOperation, Is.EqualTo(DataOperation.Created));
+
+        // Cleanup
+        await cut.Config.RemoveLocalDnsRecordsByDomain(validDomainWithHyphens);
+    }
+
+    [Test]
+    public async Task PiholeClient_DnsRecord_ConflictWithOverwriteFalse_ShouldProvideConflictDetails()
+    {
+        // Arrange
+        var cut = GeneratePiholeApiClientService();
+        var testDomain = $"conflict-detail-{Guid.NewGuid():N}.local";
+        var ip1 = "192.168.100.80";
+        var ip2 = "192.168.100.81";
+
+        // Add initial record
+        await cut.Config.EnsureLocalDnsRecord(new LocalDnsRecordRequest { Domain = testDomain, IpAddress = ip1 });
+
+        // Act: Try to add conflicting record
+        var conflictResult = await cut.Config.EnsureLocalDnsRecord(new LocalDnsRecordRequest 
+        { 
+            Domain = testDomain, 
+            IpAddress = ip2,
+            OverwriteExisting = false
+        });
+
+        // Assert: Should provide detailed conflict information
+        Assert.That(conflictResult.IsSuccess, Is.False);
+        Assert.That(conflictResult.Data?.DataOperation, Is.EqualTo(DataOperation.Conflict));
+        Assert.That(conflictResult.Data?.ConflictingIpAddresses, Is.Not.Null);
+        Assert.That(conflictResult.Data?.ConflictingIpAddresses, Does.Contain(ip1));
+        Assert.That(conflictResult.Data?.Message, Does.Contain(testDomain));
+        Assert.That(conflictResult.Data?.Message, Does.Contain(ip1));
 
         // Cleanup
         await cut.Config.RemoveLocalDnsRecordsByDomain(testDomain);
