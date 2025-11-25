@@ -1,4 +1,5 @@
-﻿using Greenwaytech.PiholeApiClient.ApiClient.SubClients.Config;
+﻿using Greenwaytech.PiholeApiClient.ApiClient.SubClients.Actions;
+using Greenwaytech.PiholeApiClient.ApiClient.SubClients.Config;
 using Greenwaytech.PiholeApiClient.ApiClient.SubClients.Teleport;
 using Greenwaytech.PiholeApiClient.Logging;
 using Greenwaytech.PiholeApiClient.Model.Configuration;
@@ -10,9 +11,9 @@ namespace Greenwaytech.PiholeApiClient.ApiClient;
 
 public interface IPiholeApiClientService
 {
-
     public ITeleportClient Teleport{ get; }
     public IPiholeConfigClient Config { get; }
+    public IActionsClient Actions { get; }
 }
 
 public class PiholeApiClientService : IPiholeApiClientService
@@ -22,6 +23,7 @@ public class PiholeApiClientService : IPiholeApiClientService
     private readonly PiHoleInstanceApiConfig _piholeInstanceApiConfig;
     public ITeleportClient Teleport { get; }
     public IPiholeConfigClient Config { get; }
+    public IActionsClient Actions { get; }
 
     [ActivatorUtilitiesConstructor]
     public PiholeApiClientService(HttpClient httpClient, ILogger<PiholeApiClientService> logger, IOptions<PiHoleInstanceApiConfig> options)
@@ -32,6 +34,7 @@ public class PiholeApiClientService : IPiholeApiClientService
         _httpClient.BaseAddress = new Uri(_piholeInstanceApiConfig.ApiBaseUrl);
         Teleport = new TeleportClient(_httpClient, _logger);
         Config = new PiholeConfigClient(_httpClient, _logger);
+        Actions = new ActionsClient(_httpClient, _logger);
     }
 
     /// <summary>
