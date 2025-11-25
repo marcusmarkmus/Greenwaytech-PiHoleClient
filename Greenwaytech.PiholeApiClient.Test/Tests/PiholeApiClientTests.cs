@@ -106,11 +106,17 @@ public class PiholeApiClientTests
 
     [Test]
     [Retry(3)]
+    [Order(1)] //run first
     public async Task PiholeClient_TeleportPull_ShouldGetFile()
     {
         // Arrange
         var cut = _sharedClient!;
 
+        // Small delay to ensure container is stable (especially in CI)
+        if (Environment.GetEnvironmentVariable("CI") == "true") // running in CI environment, give it a little more time
+        {
+            await Task.Delay(1000);
+        }
         // Act
         var result = await cut.Teleport.PullPiholeTeleportFile();
 
