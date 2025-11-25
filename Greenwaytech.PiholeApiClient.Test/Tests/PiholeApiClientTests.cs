@@ -822,7 +822,7 @@ public class PiholeApiClientTests
 
     #endregion
 
-    private IOptions<PiHoleInstanceApiConfig> GetPiholeConfigOptions() 
+    private static IOptions<PiHoleInstanceApiConfig> GetPiholeConfigOptions() 
         => Options.Create(new PiHoleInstanceApiConfig
     {
         ApiBaseUrl = _sharedBaseUrl ?? throw new InvalidOperationException("Base URL is not set"),
