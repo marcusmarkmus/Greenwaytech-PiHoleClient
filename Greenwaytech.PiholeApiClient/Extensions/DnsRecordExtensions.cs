@@ -40,7 +40,7 @@ internal static class DnsRecordExtensions
     /// <param name="ipAddress">IP address to search for</param>
     /// <param name="domain">Domain name to search for</param>
     /// <returns>True if the record exists, false otherwise</returns>
-    internal static bool ContainsRecord(this IEnumerable<string> records, string ipAddress, string domain)
+    internal static bool ContainsRecord(this IEnumerable<string>? records, string ipAddress, string domain)
     {
         if (records is null)
             return false;
@@ -124,57 +124,75 @@ internal static class DnsRecordExtensions
     /// <param name="records">Collection of DNS records</param>
     /// <param name="ipAddress">IP address</param>
     /// <param name="domain">Domain name</param>
-    /// <param name="allowDuplicateDomains">If false, prevents same domain from pointing to multiple IPs</param>
+    /// <param name="overWriteExisting">If true, replaces existing records for the domain</param>
     /// <returns>Result with status, message, and updated records</returns>
     internal static DnsRecordAddResult TryAddRecord(
         this IEnumerable<string>? records, 
         string ipAddress, 
         string domain,
-        bool allowDuplicateDomains = false)
+        bool overWriteExisting = false)
     {
         var recordList = records is not null 
             ? new List<string>(records) 
             : [];
 
-        // Check if exact record already exists
+        // Check if exact record already exists - no action needed
         if (recordList.ContainsRecord(ipAddress, domain))
         {
             return new DnsRecordAddResult
             {
                 WasAdded = false,
                 AlreadyExists = true,
-                UpdatedRecords = recordList,
+                UpdatedRecords = recordList, // Return current list unchanged
                 Message = $"DNS record '{ipAddress} {domain}' already exists"
             };
         }
 
-        // Check for domain conflicts (same domain, different IP)
-        if (!allowDuplicateDomains)
+        // Check for existing records with the same domain
+        var existingIps = recordList.FindRecordsByDomain(domain);
+        
+        // No conflicts - just add the record
+        if (existingIps.Count == 0)
         {
-            var (hasConflict, existingIps) = recordList.HasDomainConflict(domain);
-            if (existingIps.Count > 0)
+            recordList.Add(FormatDnsRecord(ipAddress, domain));
+            return new DnsRecordAddResult
             {
-                return new DnsRecordAddResult
-                {
-                    WasAdded = false,
-                    HasConflict = true,
-                    ConflictingIpAddresses = existingIps,
-                    UpdatedRecords = recordList,
-                    Message = $"Domain '{domain}' already points to {string.Join(", ", existingIps)}. " +
-                              $"Remove existing record(s) first or set allowDuplicateDomains=true."
-                };
-            }
+                WasAdded = true,
+                UpdatedRecords = recordList,
+                Message = $"DNS record '{ipAddress} {domain}' added successfully"
+            };
         }
 
-        // Add the new record
-        var newRecord = FormatDnsRecord(ipAddress, domain);
-        recordList.Add(newRecord);
+        // Conflict exists - check if overwrite is allowed
+        if (!overWriteExisting)
+        {
+            return new DnsRecordAddResult
+            {
+                WasAdded = false,
+                HasConflict = true,
+                ConflictingIpAddresses = existingIps,
+                UpdatedRecords = recordList, // Return current list unchanged
+                Message = $"Domain '{domain}' already points to {string.Join(", ", existingIps)}. " +
+                          $"Remove existing record(s) first or set overWriteExisting=true."
+            };
+        }
+
+        // Overwrite allowed - remove old records and add new one
+        recordList.RemoveAll(record =>
+        {
+            var parsed = ParseDnsRecord(record);
+            return parsed.HasValue && 
+                   string.Equals(parsed.Value.domain, domain, StringComparison.OrdinalIgnoreCase);
+        });
+        
+        recordList.Add(FormatDnsRecord(ipAddress, domain));
         
         return new DnsRecordAddResult
         {
             WasAdded = true,
             UpdatedRecords = recordList,
-            Message = $"DNS record '{ipAddress} {domain}' added successfully"
+            Message = $"DNS record '{ipAddress} {domain}' added successfully, " +
+                      $"replaced {existingIps.Count} existing record(s) for domain '{domain}'"
         };
     }
 
@@ -324,6 +342,79 @@ internal static class DnsRecordExtensions
     internal static int RecordCount(this IEnumerable<string>? records)
     {
         return records?.Count() ?? 0;
+    }
+
+    /// <summary>
+    /// Validates DNS records for duplicates and conflicts
+    /// </summary>
+    /// <param name="records">Collection of DNS records to validate</param>
+    /// <returns>Validation result indicating if records are valid</returns>
+    internal static ValidationResult ValidateDnsRecords(this IEnumerable<string>? records)
+    {
+        var errorMessageSb = new System.Text.StringBuilder();
+        if (records is null)
+        {
+            return ValidationResult.Success();
+        }
+
+        var recordsArray = records.ToArray();
+        if (recordsArray.Length == 0)
+        {
+            return ValidationResult.Success();
+        }
+
+        // Check for exact duplicates
+        var duplicates = recordsArray
+            .GroupBy(r => r, StringComparer.OrdinalIgnoreCase)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .ToList();
+
+        if (duplicates.Count > 0)
+        {
+            errorMessageSb.AppendLine($"Duplicate DNS records found: {string.Join(", ", duplicates)}");
+        }
+
+        // Check for domain conflicts (same domain pointing to different IPs)
+        var domainConflicts = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+
+        //collect IPs per domain - if more than one IP per domain, it's a conflict/bad config
+        foreach (var record in recordsArray)
+        {
+            var parsed = ParseDnsRecord(record);
+            if (parsed.HasValue)
+            {
+                var (ip, domain) = parsed.Value;
+                
+                if (!domainConflicts.TryGetValue(domain, out List<string>? domainConflictInstance))
+                {
+                    domainConflictInstance = [];
+                    domainConflicts[domain] = domainConflictInstance;
+                }
+                
+                if (!domainConflictInstance.Contains(ip, StringComparer.OrdinalIgnoreCase))
+                {
+                    domainConflictInstance.Add(ip);
+                }
+            }
+        }
+
+        // Find domains with more than one associated IP
+        var conflicts = domainConflicts
+            .Where(kvp => kvp.Value.Count > 1)
+            .Select(kvp => $"{kvp.Key} -> [{string.Join(", ", kvp.Value)}]")
+            .ToList();
+
+        if (conflicts.Count > 0)
+        {
+            errorMessageSb.AppendLine($"Domain conflicts found (same domain pointing to multiple IPs): {string.Join("; ", conflicts)}");
+        }
+        if(errorMessageSb.Length > 0)
+        {
+            return ValidationResult.Failure(errorMessageSb.ToString());
+        }
+
+        return ValidationResult.Success();
     }
 }
 

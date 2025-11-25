@@ -1,4 +1,4 @@
-﻿using Greenwaytech.PiholeApiClient.Model.App;
+using Greenwaytech.PiholeApiClient.Model.App;
 using Greenwaytech.PiholeApiClient.Model.App.Request;
 using Greenwaytech.PiholeApiClient.Model.App.Response;
 using Greenwaytech.PiholeApiClient.Model.Pihole;
@@ -20,8 +20,8 @@ public class PiholeConfigClient : IPiholeConfigClient
     };
 
     // Cache common header values to avoid repeated allocations
-    private const string TrueString = "True";
-    private const string FalseString = "False";
+    private const string TrueString = "true";
+    private const string FalseString = "false";
 
     public PiholeConfigClient(HttpClient httpClient, ILogger logger)
     {
@@ -130,15 +130,15 @@ public class PiholeConfigClient : IPiholeConfigClient
 
     /// <summary>
     /// Ensures a local DNS record exists in the Pi-hole configuration, adding it if not present.
-    /// By default, prevents creating duplicate domains pointing to different IPs.
+    /// Prevents creating duplicate domains pointing to different IPs.
+    /// To overwrite existing records for the same domain, set OverwriteExisting to true in the request.
+    /// This will also remove any conflicting records for that domain, and thus "clean" the configuration.
     /// </summary>
     /// <param name="localDnsRecordRequest">DNS record to ensure exists</param>
-    /// <param name="allowDuplicateDomains">If true, allows same domain to point to multiple IPs (not recommended)</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Response indicating if record was created, already existed, or has conflicts</returns>
     public async Task<PiholeClientApiResponse<EnsureLocalDnsRecordResponse>> EnsureLocalDnsRecord(
         LocalDnsRecordRequest localDnsRecordRequest,
-        bool allowDuplicateDomains = false,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(localDnsRecordRequest);
@@ -151,56 +151,38 @@ public class PiholeConfigClient : IPiholeConfigClient
         }
 
         // Get current configuration
-        var currentConfigResponse = await GetPiholeConfigAsync(detailed: true, cancellationToken).ConfigureAwait(false);
+        var currentConfigResponse = await GetPiholeConfigAsync(detailed: false, cancellationToken).ConfigureAwait(false);
         if (!currentConfigResponse.IsSuccess || currentConfigResponse.Data is null)
         {
             _logger.LogError("Unable to retrieve current Pi-hole configuration to ensure local DNS record.");
             return "Unable to retrieve current Pi-hole configuration".ToFailureResponse<EnsureLocalDnsRecordResponse>();
         }
 
-        var currentRecords = currentConfigResponse.Data.Config?.Dns?.Hosts;
-
+        var localDnsRecords = currentConfigResponse.Data.Config?.Dns?.Hosts ?? [];
+  
         // Try to add the record using extension method with conflict detection
-        var addResult = currentRecords.TryAddRecord(
+        var addResult = localDnsRecords.TryAddRecord(
             localDnsRecordRequest.IpAddress, 
             localDnsRecordRequest.Domain,
-            allowDuplicateDomains);
+            overWriteExisting: localDnsRecordRequest.OverwriteExisting);
 
-        // Handle conflicts
-        if (addResult.HasConflict)
+        // Handle addResult - only skip patch if no changes were made
+        if (!addResult.WasAdded)
         {
-            _logger.LogWarning("DNS record conflict detected for domain {Domain}. Existing IPs: {IPs}", 
-                localDnsRecordRequest.Domain, 
-                string.Join(", ", addResult.ConflictingIpAddresses ?? []));
-            
+            // Record already exists (idempotent) or there's a conflict
             return new PiholeClientApiResponse<EnsureLocalDnsRecordResponse>
             {
-                IsSuccess = false,
-                ErrorMessage = addResult.Message,
+                IsSuccess = !addResult.HasConflict,
                 Data = new EnsureLocalDnsRecordResponse
                 {
                     Message = addResult.Message,
-                    DataOperation = DataOperation.Conflict,
+                    DataOperation = addResult.AlreadyExists ? DataOperation.AlreadyExists : DataOperation.Conflict,
                     ConflictingIpAddresses = addResult.ConflictingIpAddresses
                 }
             };
         }
 
-        // If record already existed, return early
-        if (addResult.AlreadyExists)
-        {
-            return new PiholeClientApiResponse<EnsureLocalDnsRecordResponse>
-            {
-                IsSuccess = true,
-                Data = new EnsureLocalDnsRecordResponse
-                {
-                    Message = addResult.Message,
-                    DataOperation = DataOperation.AlreadyExists
-                }
-            };
-        }
-
-        // Patch the configuration with the updated records
+        // WasAdded was true - Patch the configuration with the updated records
         var patchRequest = new PiholePatchConfigRequest
         {
             Config = new PiholeConfigModel
@@ -247,7 +229,7 @@ public class PiholeConfigClient : IPiholeConfigClient
         }
 
         // Get current configuration
-        var currentConfigResponse = await GetPiholeConfigAsync(detailed: true, cancellationToken).ConfigureAwait(false);
+        var currentConfigResponse = await GetPiholeConfigAsync(detailed: false, cancellationToken).ConfigureAwait(false);
         if (!currentConfigResponse.IsSuccess || currentConfigResponse.Data is null)
         {
             _logger.LogError("Unable to retrieve current Pi-hole configuration to remove local DNS record.");
@@ -336,7 +318,7 @@ public class PiholeConfigClient : IPiholeConfigClient
         }
 
         // Get current configuration
-        var currentConfigResponse = await GetPiholeConfigAsync(detailed: true, cancellationToken).ConfigureAwait(false);
+        var currentConfigResponse = await GetPiholeConfigAsync(detailed: false, cancellationToken).ConfigureAwait(false);
         if (!currentConfigResponse.IsSuccess || currentConfigResponse.Data is null)
         {
             _logger.LogError("Unable to retrieve current Pi-hole configuration to remove local DNS records by IP.");
@@ -430,7 +412,7 @@ public class PiholeConfigClient : IPiholeConfigClient
         }
 
         // Get current configuration
-        var currentConfigResponse = await GetPiholeConfigAsync(detailed: true, cancellationToken).ConfigureAwait(false);
+        var currentConfigResponse = await GetPiholeConfigAsync(detailed: false, cancellationToken).ConfigureAwait(false);
         if (!currentConfigResponse.IsSuccess || currentConfigResponse.Data is null)
         {
             _logger.LogError("Unable to retrieve current Pi-hole configuration to remove local DNS record.");
@@ -500,6 +482,51 @@ public class PiholeConfigClient : IPiholeConfigClient
                 Message = removeResult.Message,
                 DataOperation = DataOperation.Deleted
             }
+        };
+    }
+
+
+    /// <summary>
+    /// Validates the current local DNS configuration and returns the result of the validation operation.
+    /// </summary>
+    /// <param name="cancellationToken">A cancellation token that can be used to cancel the validation operation.</param>
+    /// <returns>A task that represents the asynchronous operation. The task result contains a <see
+    /// cref="PiholeClientApiResponse{T}"/> with a tuple indicating whether the configuration is valid and an error
+    /// message if validation fails.</returns>
+    public async Task<PiholeClientApiResponse<(bool Valid, string ErrorMessage)>> ValidateLocalDnsConfig(
+        CancellationToken cancellationToken = default)
+    {
+        var currentConfigResponse = await GetPiholeConfigAsync(detailed: false, cancellationToken).ConfigureAwait(false);
+        if (!currentConfigResponse.IsSuccess) 
+        {
+            _logger.LogError("Unable to retrieve current Pi-hole configuration to validate local DNS configuration.");
+            return new PiholeClientApiResponse<(bool Valid, string ErrorMessage)>
+            {
+                IsSuccess = false,
+                ErrorMessage = "Unable to retrieve current Pi-hole configuration",
+                Data = (false, "Unable to retrieve current Pi-hole configuration")
+            };
+        }
+
+        var currentRecords = currentConfigResponse.Data?.Config?.Dns?.Hosts;
+        var dnsValidation = currentRecords.ValidateDnsRecords();
+        
+        if (!dnsValidation.IsValid)
+        {
+            _logger.LogWarning("Local DNS configuration validation failed: {ErrorMessage}", dnsValidation.ErrorMessage);
+            return new PiholeClientApiResponse<(bool Valid, string ErrorMessage)>
+            {
+                IsSuccess = false,
+                ErrorMessage = dnsValidation.ErrorMessage ?? "DNS records validation failed",
+                Data = (false, dnsValidation.ErrorMessage ?? "DNS records validation failed")
+            };
+        }
+
+        _logger.LogInformation("Local DNS configuration validation succeeded.");
+        return new PiholeClientApiResponse<(bool Valid, string ErrorMessage)>
+        {
+            IsSuccess = true,
+            Data = (true, string.Empty)
         };
     }
 }

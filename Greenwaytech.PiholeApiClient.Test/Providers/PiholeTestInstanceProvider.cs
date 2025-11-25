@@ -14,9 +14,18 @@ public static class PiholeTestInstanceProvider
         => new ContainerBuilder()
           .WithImage(PiholeImage)
           .WithPortBinding(PiholePort, true)
+          // Set multiple environment variables to ensure authentication works
           .WithEnvironment(PiholeWebserverPasswordEnvVar, PiholePassword)
-          .WithWaitStrategy(Wait.ForUnixContainer().UntilInternalTcpPortIsAvailable(PiholePort))
+          .WithEnvironment("WEBPASSWORD", PiholePassword) // Legacy/alternative format
+          .WithEnvironment("WEB_PASSWORD", PiholePassword) // Alternative format
+          .WithWaitStrategy(
+              Wait.ForUnixContainer()
+                  .UntilInternalTcpPortIsAvailable(PiholePort)
+                  // Wait for Pi-hole web server to be ready by checking login page
+                  .UntilHttpRequestIsSucceeded(request => request
+                      .ForPort(PiholePort)
+                      .ForPath("/admin/login")
+                      .ForStatusCode(System.Net.HttpStatusCode.OK))
+          )
           .Build();
-
-
 }

@@ -51,7 +51,15 @@ internal static class ValidationExtensions
     /// </summary>
     private static bool IsValidIpAddress(string ipAddress)
     {
-        return IPAddress.TryParse(ipAddress, out _);
+        if (!IPAddress.TryParse(ipAddress, out var ipAddressParsed))  return false;
+
+        return ipAddressParsed.AddressFamily switch
+        {
+            System.Net.Sockets.AddressFamily.InterNetwork => ipAddress.Split('.').Length == 4, // IPv4, extra check since TryParse is permissive in dotnet
+            System.Net.Sockets.AddressFamily.InterNetworkV6 => true, // IPv6
+            _ => false,
+        };
+
     }
 
     /// <summary>
