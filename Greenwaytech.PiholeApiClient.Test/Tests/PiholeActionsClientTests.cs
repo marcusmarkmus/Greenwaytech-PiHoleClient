@@ -10,9 +10,20 @@ namespace Greenwaytech.PiholeApiClient.Test.Tests;
 /// Tests for Pi-hole Actions client functionality including gravity updates, DNS restarts, and cache flushing.
 /// </summary>
 [TestFixture]
+[NonParallelizable]
 public class PiholeActionsClientTests
 {
-    private string BaseUrl => PiholeTestContainerFixture.BaseUrl;
+    [SetUp]
+    public async Task Setup()
+    {
+        await PiholeTestContainerFixture.RestoreBaselineIfNeeded();
+    }
+
+    [TearDown]
+    public async Task Teardown()
+    {
+        await PiholeTestContainerFixture.CleanupAfterModifyingTest();
+    }
 
     [Test, Order(100)]
     public void ActionsClient_Property_ShouldNotBeNull()
@@ -269,13 +280,6 @@ public class PiholeActionsClientTests
         Assert.That(restartResult.IsSuccess, Is.True, restartResult.ErrorMessage);
         Assert.That(restartResult.Data, Is.Not.Null);
     }
-
-    private IOptions<PiHoleInstanceApiConfig> GetPiholeConfigOptions()
-        => Options.Create(new PiHoleInstanceApiConfig
-        {
-            ApiBaseUrl = BaseUrl,
-            ApiKey = PiholeTestInstanceProvider.PiholePassword
-        });
 
     private IPiholeApiClientService GeneratePiholeApiClientService()
     {

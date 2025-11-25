@@ -11,9 +11,20 @@ namespace Greenwaytech.PiholeApiClient.Test.Tests;
 /// Tests for Pi-hole Teleport client functionality including backup and restore operations.
 /// </summary>
 [TestFixture]
+[NonParallelizable]
 public class PiholeTeleportClientTests
 {
-    private string BaseUrl => PiholeTestContainerFixture.BaseUrl;
+    [SetUp]
+    public async Task Setup()
+    {
+        await PiholeTestContainerFixture.RestoreBaselineIfNeeded();
+    }
+
+    [TearDown]
+    public async Task Teardown()
+    {
+        await PiholeTestContainerFixture.CleanupAfterModifyingTest();
+    }
 
     [Test, Order(50)]
     public async Task TeleportPull_ShouldGetFile()
@@ -30,6 +41,7 @@ public class PiholeTeleportClientTests
     }
 
     [Test, Order(51)]
+    [RequiresBaselineRestore]
     public async Task Teleport_Import_ShouldSucceed()
     {
         // Arrange
