@@ -2,6 +2,8 @@
 a .net client library for interacting with the Pi-Hole API - Work in progress!
 
 # Example Usage
+
+## Configuration
 Add the  [Greenwaytech.PiholeApiClient nuget package](https://www.nuget.org/packages/Greenwaytech.PiholeApiClient/)  in your preferred way.
  
 Appsettings.json configuration example:
@@ -12,6 +14,8 @@ Appsettings.json configuration example:
     "ApiKey": "<your_api_key>"
   }
 }
+
+### Dependency Injection
 ```
 DI registration example, single client:
 
@@ -72,7 +76,9 @@ Console.WriteLine($"Pi-hole client resolved from factory: {piholeClientFromFacto
 //Usually you would just inject IPiholeClientFactory in your service and create clients there.
 
 ```
-Non-Di example usage:
+
+
+### Non-Di example usage:
 ```csharp
 //todo!
 ```
@@ -80,10 +86,13 @@ Non-Di example usage:
 # Current Features
 ## Teleport
 Pull and push Teleport data to/from Pi-hole instances.
-
+Todo: examplecode
 ## Config
 Pull and push configuration settings to/from Pi-hole instances.
-
+Todo: excample code
+## Actions
+Perform actions
+todo: example code
 # Next planned features
 ## Get messages from pihole
 Todo
