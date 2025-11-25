@@ -35,6 +35,11 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+		<!-- Expose internals to test project -->
+		<InternalsVisibleTo Include="Greenwaytech.PiholeApiClient.Test" />
+	</ItemGroup>
+
+	<ItemGroup>
 		<!-- Include README and icon -->
 		<None Update="README.md">
 			<Pack>true</Pack>
