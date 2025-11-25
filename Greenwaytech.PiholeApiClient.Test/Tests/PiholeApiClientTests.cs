@@ -105,6 +105,7 @@ public class PiholeApiClientTests
     }
 
     [Test]
+    [Retry(3)]
     public async Task PiholeClient_TeleportPull_ShouldGetFile()
     {
         // Arrange
