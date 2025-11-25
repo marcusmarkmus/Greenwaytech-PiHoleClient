@@ -418,3 +418,4 @@ FodyWeavers.xsd
 *.msp
 /Greenwaytech.PiholeApiClient/DemoProject/appsettings.json
 /DemoProject/appsettings.json
+/t --filter FullyQualifiedName~PiholeConfigClientTests --logger console;verbosity=normal } finally { if ($) { echo fe005a027e2547e5850ac37c9724855a=$ } else { echo fe005a027e2547e5850ac37c9724855a=$ } }
