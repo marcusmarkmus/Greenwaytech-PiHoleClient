@@ -84,6 +84,10 @@ public record Dns
     public Ratelimit? RateLimit { get; set; }
 }
 
+/// <summary>
+/// This was historically just a string, but is now an object with more details.
+/// Update your pihole if you see issues deserializing!
+/// </summary>
 public record DnsDomain
 {
     [JsonPropertyName("name")]
