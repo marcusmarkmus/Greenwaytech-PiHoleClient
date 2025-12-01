@@ -53,7 +53,7 @@ public record Dns
     [JsonPropertyName("expandHosts")]
     public bool? ExpandHosts { get; set; }
     [JsonPropertyName("domain")]
-    public DnsDomain? Domain { get; set; }
+    public string? Domain { get; set; }
     [JsonPropertyName("bogusPriv")]
     public bool? BogusPriv { get; set; }
     [JsonPropertyName("dnssec")]
@@ -82,14 +82,6 @@ public record Dns
     public Reply? Reply { get; set; }
     [JsonPropertyName("rateLimit")]
     public Ratelimit? RateLimit { get; set; }
-}
-
-public record DnsDomain
-{
-    [JsonPropertyName("name")]
-    public string? Name { get; set; }
-    [JsonPropertyName("local")]
-    public bool? Local { get; set; }
 }
 
 public record Cache
