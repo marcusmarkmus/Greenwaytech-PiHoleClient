@@ -59,7 +59,7 @@ internal class PiholeSessionProvider : IPiholeSessionProvider
 
             _logger.LogInformation("Authenticating with Pi-hole API at {BaseUrl}", _config.ApiBaseUrl);
             
-            var request = new HttpRequestMessage(HttpMethod.Post, "/api/auth")
+            using var request = new HttpRequestMessage(HttpMethod.Post, "/api/auth")
             {
                 Content = new StringContent($"{{\"password\":\"{_config.ApiKey}\"}}", Encoding.UTF8, "application/json")
             };
