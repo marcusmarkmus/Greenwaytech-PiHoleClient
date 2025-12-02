@@ -665,6 +665,242 @@ public class PiholeConfigClientTests
 
     #endregion
 
+    #region Concurrency and Race Condition Tests
+
+    [Test, Order(100)]
+    [RequiresBaselineRestore]
+    public async Task Concurrency_ConcurrentEnsureDnsRecord_ShouldNotLoseUpdates()
+    {
+        // Arrange
+        var cut = GeneratePiholeApiClientService();
+        var baseIp = "192.168.200";
+        var concurrentTaskCount = 10;
+        var tasks = new List<Task<PiholeClientApiResponse<EnsureLocalDnsRecordResponse>>>();
+
+        // Act: Fire multiple concurrent DNS record additions
+        for (int i = 0; i < concurrentTaskCount; i++)
+        {
+            var domain = $"concurrent-{i}-{Guid.NewGuid():N}.local";
+            var ip = $"{baseIp}.{i}";
+            var request = new LocalDnsRecordRequest { Domain = domain, IpAddress = ip };
+            tasks.Add(cut.Config.EnsureLocalDnsRecord(request));
+        }
+
+        var results = await Task.WhenAll(tasks);
+
+        // Assert: All operations should succeed
+        Assert.That(results.All(r => r.IsSuccess), Is.True, "All concurrent operations should succeed");
+        Assert.That(results.All(r => r.Data?.DataOperation == DataOperation.Created), Is.True, 
+            "All operations should report Created status");
+
+        // Verify all records exist in final config
+        var config = await cut.Config.GetPiholeConfigAsync();
+        for (int i = 0; i < concurrentTaskCount; i++)
+        {
+            var expectedRecord = $"{baseIp}.{i}";
+            var exists = config.Data?.Config?.Dns?.Hosts?.Any(h => h.Contains(expectedRecord)) ?? false;
+            Assert.That(exists, Is.True, $"Record {i} should exist in final configuration");
+        }
+
+        // Count total records to ensure no duplicates were created
+        var addedRecords = config.Data?.Config?.Dns?.Hosts?
+            .Where(h => h.Contains(baseIp))
+            .ToList();
+        Assert.That(addedRecords?.Count, Is.EqualTo(concurrentTaskCount), 
+            $"Should have exactly {concurrentTaskCount} records, no lost updates");
+    }
+
+    [Test, Order(101)]
+    [RequiresBaselineRestore]
+    public async Task Concurrency_ConcurrentRemoveByDomain_ShouldHandleGracefully()
+    {
+        // Arrange
+        var cut = GeneratePiholeApiClientService();
+        var testDomain = $"remove-concurrent-{Guid.NewGuid():N}.local";
+        var testIp = "192.168.200.100";
+
+        // Add initial record
+        await cut.Config.EnsureLocalDnsRecord(new LocalDnsRecordRequest { Domain = testDomain, IpAddress = testIp });
+
+        // Act: Fire multiple concurrent deletions of the same record
+        var tasks = Enumerable.Range(0, 5)
+            .Select(_ => cut.Config.RemoveLocalDnsRecordsByDomain(testDomain))
+            .ToList();
+
+        var results = await Task.WhenAll(tasks);
+
+        // Assert: First should succeed with Deleted, rest should be idempotent with AlreadyExists
+        var deletedCount = results.Count(r => r.Data?.DataOperation == DataOperation.Deleted);
+        var alreadyExistsCount = results.Count(r => r.Data?.DataOperation == DataOperation.AlreadyExists);
+
+        Assert.That(deletedCount, Is.EqualTo(1), "Exactly one deletion should succeed");
+        Assert.That(alreadyExistsCount, Is.EqualTo(4), "Four operations should find nothing to delete");
+        Assert.That(results.All(r => r.IsSuccess), Is.True, "All operations should succeed (idempotent)");
+
+        // Verify record is removed
+        var config = await cut.Config.GetPiholeConfigAsync();
+        Assert.That(config.Data?.Config?.Dns?.Hosts, Does.Not.Contain($"{testIp} {testDomain}"));
+    }
+
+    [Test, Order(102)]
+    [RequiresBaselineRestore]
+    public async Task Concurrency_MixedAddAndRemoveOperations_ShouldMaintainConsistency()
+    {
+        // Arrange
+        var cut = GeneratePiholeApiClientService();
+        var testDomain = $"mixed-ops-{Guid.NewGuid():N}.local";
+        var ip1 = "192.168.200.101";
+        var ip2 = "192.168.200.102";
+
+        // Add initial record
+        await cut.Config.EnsureLocalDnsRecord(new LocalDnsRecordRequest { Domain = testDomain, IpAddress = ip1 });
+
+        // Act: Concurrent operations - some adding, some removing
+        var tasks = new List<Task<object>>();
+
+        // Try to remove existing record
+        tasks.Add(cut.Config.RemoveLocalDnsRecordsByDomain(testDomain)
+            .ContinueWith(t => (object)t.Result));
+
+        // Try to add new record with different IP
+        tasks.Add(cut.Config.EnsureLocalDnsRecord(new LocalDnsRecordRequest { Domain = testDomain, IpAddress = ip2 })
+            .ContinueWith(t => (object)t.Result));
+
+        // Try to add original record again
+        tasks.Add(cut.Config.EnsureLocalDnsRecord(new LocalDnsRecordRequest { Domain = testDomain, IpAddress = ip1 })
+            .ContinueWith(t => (object)t.Result));
+
+        await Task.WhenAll(tasks);
+
+        // Assert: Final state should be consistent (one of the IPs should be present)
+        var config = await cut.Config.GetPiholeConfigAsync();
+        var domainRecords = config.Data?.Config?.Dns?.Hosts?
+            .Where(h => h.Contains(testDomain, StringComparison.OrdinalIgnoreCase))
+            .ToList() ?? [];
+
+        // Should have at most 1 record for this domain (no duplicates)
+        Assert.That(domainRecords.Count, Is.LessThanOrEqualTo(1), 
+            "Should not have duplicate records due to race conditions");
+    }
+
+    [Test, Order(103)]
+    [RequiresBaselineRestore]
+    public async Task Concurrency_HighContentionScenario_ShouldNotCorruptConfig()
+    {
+        // Arrange
+        var cut = GeneratePiholeApiClientService();
+        var sharedDomain = $"high-contention-{Guid.NewGuid():N}.local";
+        var taskCount = 20;
+
+        // Act: High contention - many threads trying to add same domain with different IPs
+        var tasks = Enumerable.Range(0, taskCount)
+            .Select(i => cut.Config.EnsureLocalDnsRecord(new LocalDnsRecordRequest 
+            { 
+                Domain = sharedDomain, 
+                IpAddress = $"192.168.201.{i}",
+                OverwriteExisting = true  // Allow overwrites
+            }))
+            .ToList();
+
+        var results = await Task.WhenAll(tasks);
+
+        // Assert: All operations should complete without error
+        Assert.That(results.All(r => r.IsSuccess), Is.True, 
+            "All operations should succeed despite high contention");
+
+        // Final config should have exactly 1 record for this domain (last writer wins)
+        var config = await cut.Config.GetPiholeConfigAsync();
+        var domainRecords = config.Data?.Config?.Dns?.Hosts?
+            .Where(h => h.Contains(sharedDomain, StringComparison.OrdinalIgnoreCase))
+            .ToList() ?? [];
+
+        Assert.That(domainRecords.Count, Is.EqualTo(1), 
+            "Should have exactly one record (no duplicates from race conditions)");
+    }
+
+    [Test, Order(104)]
+    [RequiresBaselineRestore]
+    public async Task Concurrency_ConcurrentAddDifferentDomainsSameIP_ShouldSucceed()
+    {
+        // Arrange
+        var cut = GeneratePiholeApiClientService();
+        var sharedIp = "192.168.202.1";
+        var taskCount = 10;
+
+        // Act: Multiple threads adding different domains to same IP
+        var tasks = Enumerable.Range(0, taskCount)
+            .Select(i => cut.Config.EnsureLocalDnsRecord(new LocalDnsRecordRequest 
+            { 
+                Domain = $"domain-{i}-{Guid.NewGuid():N}.local", 
+                IpAddress = sharedIp 
+            }))
+            .ToList();
+
+        var results = await Task.WhenAll(tasks);
+
+        // Assert: All should succeed
+        Assert.That(results.All(r => r.IsSuccess), Is.True);
+        Assert.That(results.All(r => r.Data?.DataOperation == DataOperation.Created), Is.True);
+
+        // Verify all records exist
+        var config = await cut.Config.GetPiholeConfigAsync();
+        var recordsWithIp = config.Data?.Config?.Dns?.Hosts?
+            .Where(h => h.Contains(sharedIp))
+            .ToList() ?? [];
+
+        Assert.That(recordsWithIp.Count, Is.EqualTo(taskCount), 
+            "All domains should be added to the same IP without conflicts");
+    }
+
+    [Test, Order(105)]
+    [RequiresBaselineRestore]
+    public async Task Concurrency_StressTest_RapidFireOperations_ShouldMaintainIntegrity()
+    {
+        // Arrange
+        var cut = GeneratePiholeApiClientService();
+        var operationCount = 50;
+        var random = new Random(42); // Seeded for reproducibility
+        var tasks = new List<Task>();
+
+        // Act: Rapid-fire mixed operations
+        for (int i = 0; i < operationCount; i++)
+        {
+            var domain = $"stress-{i % 10}-{Guid.NewGuid():N}.local"; // Reuse 10 domains
+            var ip = $"192.168.203.{i % 20}"; // Reuse 20 IPs
+
+            var operation = random.Next(3);
+            switch (operation)
+            {
+                case 0: // Add
+                    tasks.Add(cut.Config.EnsureLocalDnsRecord(new LocalDnsRecordRequest 
+                    { 
+                        Domain = domain, 
+                        IpAddress = ip,
+                        OverwriteExisting = true 
+                    }));
+                    break;
+                case 1: // Remove by domain
+                    tasks.Add(cut.Config.RemoveLocalDnsRecordsByDomain(domain));
+                    break;
+                case 2: // Remove by IP
+                    tasks.Add(cut.Config.RemoveLocalDnsRecordsByIp(ip));
+                    break;
+            }
+        }
+
+        // Wait for all operations
+        await Task.WhenAll(tasks);
+
+        // Assert: Validate config integrity
+        var validationResult = await cut.Config.ValidateLocalDnsConfig();
+        Assert.That(validationResult.IsSuccess, Is.True, 
+            "Configuration should remain valid after stress test");
+        Assert.That(validationResult.Data.Valid, Is.True, 
+            "DNS configuration should be internally consistent");
+    }
+
+    #endregion
+
     private IPiholeApiClientService GeneratePiholeApiClientService()
     {
         return PiholeTestContainerFixture.ServiceProvider.GetRequiredService<IPiholeApiClientService>();
