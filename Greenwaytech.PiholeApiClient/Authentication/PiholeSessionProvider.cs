@@ -12,11 +12,11 @@ using System.Text.Json;
 namespace Greenwaytech.PiholeApiClient.Authentication;
 internal class PiholeSessionProvider : IPiholeSessionProvider
 {
-
     private readonly HttpClient _httpClient;
     private readonly ILogger<PiholeSessionProvider> _logger;
     private readonly PiHoleInstanceApiConfig _config;
     private PiholeApiSession? _cachedSession;
+    private readonly SemaphoreSlim _authLock = new(1, 1);
 
     [ActivatorUtilitiesConstructor]
     public PiholeSessionProvider(HttpClient httpClient, ILogger<PiholeSessionProvider> logger, IOptions<PiHoleInstanceApiConfig> options)
@@ -26,6 +26,7 @@ internal class PiholeSessionProvider : IPiholeSessionProvider
         _config = options.Value;
         _httpClient.BaseAddress = new Uri(_config.ApiBaseUrl);
     }
+
     /// <summary>
     /// Overload for non-DI contexts that uses a console logger by default.
     /// </summary>
@@ -36,35 +37,58 @@ internal class PiholeSessionProvider : IPiholeSessionProvider
 
     internal async Task<PiholeApiSession> GetValidSessionAsync()
     {
-
+        // Quick check without lock
         if (_cachedSession?.IsValid() == true)
         {
-            _logger.LogInformation("Using cached Pi-hole session");
+            _logger.LogDebug("Using cached Pi-hole session (SID: {Sid}, expires in {RemainingSeconds}s)", 
+                _cachedSession.Sid?[..3] + "...", 
+                (_cachedSession.PiholeAuthResponseTimeStamp.AddSeconds(_cachedSession.Validity ?? 0) - DateTimeOffset.UtcNow).TotalSeconds);
             return _cachedSession;
         }
 
-        var request = new HttpRequestMessage(HttpMethod.Post, "/api/auth")
+        // Lock for authentication
+        await _authLock.WaitAsync();
+        try
         {
-            Content = new StringContent($"{{\"password\":\"{_config.ApiKey}\"}}", Encoding.UTF8, "application/json")
-        };
+            // Double-check after acquiring lock (another thread might have refreshed it)
+            if (_cachedSession?.IsValid() == true)
+            {
+                _logger.LogDebug("Using cached Pi-hole session acquired after lock (SID: {Sid})", _cachedSession.Sid?[..8] + "...");
+                return _cachedSession;
+            }
 
-        var response = await _httpClient.SendAsync(request);
-        if (!response.IsSuccessStatusCode)
-        {
-            _logger.LogError("Failed to authenticate with Pi-hole API");
-            return new() { Valid = false, PiholeAuthResponseTimeStamp = DateTimeOffset.UtcNow };
+            _logger.LogInformation("Authenticating with Pi-hole API at {BaseUrl}", _config.ApiBaseUrl);
+            
+            using var request = new HttpRequestMessage(HttpMethod.Post, "/api/auth")
+            {
+                Content = new StringContent($"{{\"password\":\"{_config.ApiKey}\"}}", Encoding.UTF8, "application/json")
+            };
+
+            var response = await _httpClient.SendAsync(request);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogError("Failed to authenticate with Pi-hole API. Status: {StatusCode}", response.StatusCode);
+                return new() { Valid = false, PiholeAuthResponseTimeStamp = DateTimeOffset.UtcNow };
+            }
+
+            var json = await response.Content.ReadAsStringAsync();
+            var authResponse = JsonSerializer.Deserialize<PiholeAuthResponse>(json);
+            if (authResponse?.Session == null)
+            {
+                _logger.LogError("Invalid session response from Pi-hole API");
+                return new() { Valid = false, PiholeAuthResponseTimeStamp = DateTimeOffset.UtcNow };
+            }
+
+            _cachedSession = authResponse.GetPiholeApiSession();
+            _logger.LogInformation("Successfully authenticated with Pi-hole. Session valid for {Validity} seconds (SID: {Sid})", 
+                _cachedSession.Validity, 
+                _cachedSession.Sid?[..3] + "...");
+            return _cachedSession;
         }
-
-        var json = await response.Content.ReadAsStringAsync();
-        var authResponse = JsonSerializer.Deserialize<PiholeAuthResponse>(json);
-        if (authResponse?.Session == null)
+        finally
         {
-            _logger.LogError("Invalid session response from Pi-hole");
-            return new() { Valid = false, PiholeAuthResponseTimeStamp = DateTimeOffset.UtcNow };
+            _authLock.Release();
         }
-
-        _cachedSession = authResponse.GetPiholeApiSession();
-        return _cachedSession;
     }
 
     Task<PiholeApiSession> IPiholeSessionProvider.GetValidSessionAsync()
