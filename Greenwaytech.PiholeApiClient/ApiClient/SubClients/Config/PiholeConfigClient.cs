@@ -23,6 +23,19 @@ public class PiholeConfigClient : IPiholeConfigClient
     private const string TrueString = "true";
     private const string FalseString = "false";
 
+    /// <summary>
+    /// Semaphore to serialize ALL configuration mutations per Pi-hole instance.
+    /// This prevents race conditions where multiple concurrent operations perform read-modify-write sequences.
+    /// IMPORTANT: The entire read-modify-write cycle must be locked, not just the write operation.
+    /// Example race condition without proper locking:
+    ///   Thread A: GET config (v1) -> modify -> PATCH (creates v2)
+    ///   Thread B: GET config (v1) -> modify -> PATCH (overwrites v2 with changes based on v1!)
+    /// By locking the entire operation, we ensure:
+    ///   Thread A: LOCK -> GET (v1) -> modify -> PATCH (v2) -> UNLOCK
+    ///   Thread B: [waits] -> LOCK -> GET (v2) -> modify -> PATCH (v3) -> UNLOCK
+    /// </summary>
+    private readonly SemaphoreSlim _configMutationLock = new(1, 1);
+
     public PiholeConfigClient(HttpClient httpClient, ILogger logger)
     {
         _httpClient = httpClient;
@@ -79,6 +92,12 @@ public class PiholeConfigClient : IPiholeConfigClient
     /// Only provided settings will be changed, unspecified settings will remain unchanged.
     /// !IMPORTANT!: Lists/arrays provided in the config will REPLACE existing lists/arrays, not append to them.
     /// Do a GetPiholeConfigAsync first to retrieve existing lists/arrays if you want to append to them.
+    /// <para>
+    /// WARNING: When performing read-modify-write operations (GET config, modify locally, PATCH config),
+    /// you MUST lock the entire sequence to prevent race conditions. If you call this method directly
+    /// after GetPiholeConfigAsync, consider using the higher-level methods (e.g., EnsureLocalDnsRecord)
+    /// which handle locking automatically, or manually acquire _configMutationLock around your entire operation.
+    /// </para>
     /// </summary>
     /// <param name="patchRequest">Configuration patch request</param>
     /// <param name="restartServices">Restart FTL after a change</param>
@@ -105,7 +124,7 @@ public class PiholeConfigClient : IPiholeConfigClient
 
         var responseMessage = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
 
-        // Cache content to avoid reading stream twice - FIXED: removed .Result blocking call
+        // Cache content to avoid reading stream twice
         var responseContent = await responseMessage.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
 
         if (responseMessage.IsSuccessStatusCode)
@@ -133,6 +152,9 @@ public class PiholeConfigClient : IPiholeConfigClient
     /// Prevents creating duplicate domains pointing to different IPs.
     /// To overwrite existing records for the same domain, set OverwriteExisting to true in the request.
     /// This will also remove any conflicting records for that domain, and thus "clean" the configuration.
+    /// <para>
+    /// This operation is thread-safe. The entire read-modify-write sequence is locked to prevent race conditions.
+    /// </para>
     /// </summary>
     /// <param name="localDnsRecordRequest">DNS record to ensure exists</param>
     /// <param name="cancellationToken">Cancellation token</param>
@@ -150,71 +172,88 @@ public class PiholeConfigClient : IPiholeConfigClient
             return validationResult.ErrorMessage!.ToFailureResponse<EnsureLocalDnsRecordResponse>();
         }
 
-        // Get current configuration
-        var currentConfigResponse = await GetPiholeConfigAsync(detailed: false, cancellationToken).ConfigureAwait(false);
-        if (!currentConfigResponse.IsSuccess || currentConfigResponse.Data is null)
+        // Lock the entire read-modify-write sequence to prevent race conditions
+        await _configMutationLock.WaitAsync(cancellationToken);
+        try
         {
-            _logger.LogError("Unable to retrieve current Pi-hole configuration to ensure local DNS record.");
-            return "Unable to retrieve current Pi-hole configuration".ToFailureResponse<EnsureLocalDnsRecordResponse>();
-        }
+            _logger.LogDebug("Acquired config mutation lock for EnsureLocalDnsRecord: {Domain}", localDnsRecordRequest.Domain);
 
-        var localDnsRecords = currentConfigResponse.Data.Config?.Dns?.Hosts ?? [];
+            // Get current configuration (inside lock to ensure we read the latest state)
+            var currentConfigResponse = await GetPiholeConfigAsync(detailed: false, cancellationToken).ConfigureAwait(false);
+            if (!currentConfigResponse.IsSuccess || currentConfigResponse.Data is null)
+            {
+                _logger.LogError("Unable to retrieve current Pi-hole configuration to ensure local DNS record.");
+                return "Unable to retrieve current Pi-hole configuration".ToFailureResponse<EnsureLocalDnsRecordResponse>();
+            }
+
+            var localDnsRecords = currentConfigResponse.Data.Config?.Dns?.Hosts ?? [];
   
-        // Try to add the record using extension method with conflict detection
-        var addResult = localDnsRecords.TryAddRecord(
-            localDnsRecordRequest.IpAddress, 
-            localDnsRecordRequest.Domain,
-            overWriteExisting: localDnsRecordRequest.OverwriteExisting);
+            // Try to add the record using extension method with conflict detection
+            var addResult = localDnsRecords.TryAddRecord(
+                localDnsRecordRequest.IpAddress, 
+                localDnsRecordRequest.Domain,
+                overWriteExisting: localDnsRecordRequest.OverwriteExisting);
 
-        // Handle addResult - only skip patch if no changes were made
-        if (!addResult.WasAdded)
-        {
-            // Record already exists (idempotent) or there's a conflict
+            // Handle addResult - only skip patch if no changes were made
+            if (!addResult.WasAdded)
+            {
+                // Record already exists (idempotent) or there's a conflict
+                return new PiholeClientApiResponse<EnsureLocalDnsRecordResponse>
+                {
+                    IsSuccess = !addResult.HasConflict,
+                    Data = new EnsureLocalDnsRecordResponse
+                    {
+                        Message = addResult.Message,
+                        DataOperation = addResult.AlreadyExists ? DataOperation.AlreadyExists : DataOperation.Conflict,
+                        ConflictingIpAddresses = addResult.ConflictingIpAddresses
+                    }
+                };
+            }
+
+            // WasAdded was true - Patch the configuration with the updated records
+            var patchRequest = new PiholePatchConfigRequest
+            {
+                Config = new PiholeConfigModel
+                {
+                    Dns = new Dns
+                    {
+                        Hosts = [.. addResult.UpdatedRecords]
+                    }
+                }
+            };
+
+            var patchResponse = await PatchPiholeConfigAsync(patchRequest, restartServices: true, cancellationToken).ConfigureAwait(false);
+
+            if (!patchResponse.IsSuccess)
+            {
+                var errorMsg = string.Concat("Failed to patch Pi-hole configuration to add local DNS record: ", patchResponse.ErrorMessage);
+                return errorMsg.ToFailureResponse<EnsureLocalDnsRecordResponse>();
+            }
+
+            _logger.LogInformation("Successfully ensured DNS record: {Domain} -> {IpAddress}", localDnsRecordRequest.Domain, localDnsRecordRequest.IpAddress);
+
             return new PiholeClientApiResponse<EnsureLocalDnsRecordResponse>
             {
-                IsSuccess = !addResult.HasConflict,
+                IsSuccess = true,
                 Data = new EnsureLocalDnsRecordResponse
                 {
                     Message = addResult.Message,
-                    DataOperation = addResult.AlreadyExists ? DataOperation.AlreadyExists : DataOperation.Conflict,
-                    ConflictingIpAddresses = addResult.ConflictingIpAddresses
+                    DataOperation = DataOperation.Created
                 }
             };
         }
-
-        // WasAdded was true - Patch the configuration with the updated records
-        var patchRequest = new PiholePatchConfigRequest
+        finally
         {
-            Config = new PiholeConfigModel
-            {
-                Dns = new Dns
-                {
-                    Hosts = [.. addResult.UpdatedRecords]
-                }
-            }
-        };
-
-        var patchResponse = await PatchPiholeConfigAsync(patchRequest, restartServices: true, cancellationToken).ConfigureAwait(false);
-
-        if (!patchResponse.IsSuccess)
-        {
-            var errorMsg = string.Concat("Failed to patch Pi-hole configuration to add local DNS record: ", patchResponse.ErrorMessage);
-            return errorMsg.ToFailureResponse<EnsureLocalDnsRecordResponse>();
+            _configMutationLock.Release();
+            _logger.LogDebug("Released config mutation lock for EnsureLocalDnsRecord");
         }
-
-        return new PiholeClientApiResponse<EnsureLocalDnsRecordResponse>
-        {
-            IsSuccess = true,
-            Data = new EnsureLocalDnsRecordResponse
-            {
-                Message = addResult.Message,
-                DataOperation = DataOperation.Created
-            }
-        };
     }
 
     /// <summary>
     /// Removes all DNS records for a specific domain (regardless of IP address).
+    /// <para>
+    /// This operation is thread-safe. The entire read-modify-write sequence is locked to prevent race conditions.
+    /// </para>
     /// </summary>
     /// <param name="domain">Domain name to remove</param>
     /// <param name="cancellationToken">Cancellation token</param>
@@ -228,82 +267,97 @@ public class PiholeConfigClient : IPiholeConfigClient
             return "Domain cannot be null or empty".ToFailureResponse<EnsureLocalDnsRecordResponse>();
         }
 
-        // Get current configuration
-        var currentConfigResponse = await GetPiholeConfigAsync(detailed: false, cancellationToken).ConfigureAwait(false);
-        if (!currentConfigResponse.IsSuccess || currentConfigResponse.Data is null)
+        // Lock the entire read-modify-write sequence
+        await _configMutationLock.WaitAsync(cancellationToken);
+        try
         {
-            _logger.LogError("Unable to retrieve current Pi-hole configuration to remove local DNS record.");
-            return "Unable to retrieve current Pi-hole configuration".ToFailureResponse<EnsureLocalDnsRecordResponse>();
-        }
+            _logger.LogDebug("Acquired config mutation lock for RemoveLocalDnsRecordsByDomain: {Domain}", domain);
 
-        var currentRecords = currentConfigResponse.Data.Config?.Dns?.Hosts;
-
-        // Check if there are no records
-        if (currentRecords.RecordCount() == 0)
-        {
-            return new PiholeClientApiResponse<EnsureLocalDnsRecordResponse>
+            // Get current configuration (inside lock)
+            var currentConfigResponse = await GetPiholeConfigAsync(detailed: false, cancellationToken).ConfigureAwait(false);
+            if (!currentConfigResponse.IsSuccess || currentConfigResponse.Data is null)
             {
-                IsSuccess = true,
-                Data = new EnsureLocalDnsRecordResponse
+                _logger.LogError("Unable to retrieve current Pi-hole configuration to remove local DNS record.");
+                return "Unable to retrieve current Pi-hole configuration".ToFailureResponse<EnsureLocalDnsRecordResponse>();
+            }
+
+            var currentRecords = currentConfigResponse.Data.Config?.Dns?.Hosts;
+
+            // Check if there are no records
+            if (currentRecords.RecordCount() == 0)
+            {
+                return new PiholeClientApiResponse<EnsureLocalDnsRecordResponse>
                 {
-                    Message = "No DNS records exist",
-                    DataOperation = DataOperation.AlreadyExists
+                    IsSuccess = true,
+                    Data = new EnsureLocalDnsRecordResponse
+                    {
+                        Message = "No DNS records exist",
+                        DataOperation = DataOperation.AlreadyExists
+                    }
+                };
+            }
+
+            // Try to remove records by domain
+            var removeResult = currentRecords.TryRemoveRecordsByDomain(domain);
+
+            // If no records were removed, return early
+            if (!removeResult.WasRemoved)
+            {
+                return new PiholeClientApiResponse<EnsureLocalDnsRecordResponse>
+                {
+                    IsSuccess = true,
+                    Data = new EnsureLocalDnsRecordResponse
+                    {
+                        Message = removeResult.Message,
+                        DataOperation = DataOperation.AlreadyExists
+                    }
+                };
+            }
+
+            // Patch the configuration with the updated records
+            var patchRequest = new PiholePatchConfigRequest
+            {
+                Config = new PiholeConfigModel
+                {
+                    Dns = new Dns
+                    {
+                        Hosts = removeResult.UpdatedRecords
+                    }
                 }
             };
-        }
 
-        // Try to remove records by domain
-        var removeResult = currentRecords.TryRemoveRecordsByDomain(domain);
+            var patchResponse = await PatchPiholeConfigAsync(patchRequest, restartServices: true, cancellationToken).ConfigureAwait(false);
 
-        // If no records were removed, return early
-        if (!removeResult.WasRemoved)
-        {
+            if (!patchResponse.IsSuccess)
+            {
+                var errorMsg = string.Concat("Failed to patch Pi-hole configuration to remove local DNS record: ", patchResponse.ErrorMessage);
+                return errorMsg.ToFailureResponse<EnsureLocalDnsRecordResponse>();
+            }
+
             return new PiholeClientApiResponse<EnsureLocalDnsRecordResponse>
             {
                 IsSuccess = true,
                 Data = new EnsureLocalDnsRecordResponse
                 {
                     Message = removeResult.Message,
-                    DataOperation = DataOperation.AlreadyExists
+                    DataOperation = DataOperation.Deleted,
+                    RemovedCount = removeResult.RemovedCount,
+                    RemovedIpAddresses = removeResult.RemovedIpAddresses
                 }
             };
         }
-
-        // Patch the configuration with the updated records
-        var patchRequest = new PiholePatchConfigRequest
+        finally
         {
-            Config = new PiholeConfigModel
-            {
-                Dns = new Dns
-                {
-                    Hosts = removeResult.UpdatedRecords
-                }
-            }
-        };
-
-        var patchResponse = await PatchPiholeConfigAsync(patchRequest, restartServices: true, cancellationToken).ConfigureAwait(false);
-
-        if (!patchResponse.IsSuccess)
-        {
-            var errorMsg = string.Concat("Failed to patch Pi-hole configuration to remove local DNS record: ", patchResponse.ErrorMessage);
-            return errorMsg.ToFailureResponse<EnsureLocalDnsRecordResponse>();
+            _configMutationLock.Release();
+            _logger.LogDebug("Released config mutation lock for RemoveLocalDnsRecordsByDomain");
         }
-
-        return new PiholeClientApiResponse<EnsureLocalDnsRecordResponse>
-        {
-            IsSuccess = true,
-            Data = new EnsureLocalDnsRecordResponse
-            {
-                Message = removeResult.Message,
-                DataOperation = DataOperation.Deleted,
-                RemovedCount = removeResult.RemovedCount,
-                RemovedIpAddresses = removeResult.RemovedIpAddresses
-            }
-        };
     }
 
     /// <summary>
     /// Removes all DNS records pointing to a specific IP address (all domains for that IP).
+    /// <para>
+    /// This operation is thread-safe. The entire read-modify-write sequence is locked to prevent race conditions.
+    /// </para>
     /// </summary>
     /// <param name="ipAddress">IP address to remove</param>
     /// <param name="cancellationToken">Cancellation token</param>
@@ -317,83 +371,98 @@ public class PiholeConfigClient : IPiholeConfigClient
             return "IP address cannot be null or empty".ToFailureResponse<EnsureLocalDnsRecordResponse>();
         }
 
-        // Get current configuration
-        var currentConfigResponse = await GetPiholeConfigAsync(detailed: false, cancellationToken).ConfigureAwait(false);
-        if (!currentConfigResponse.IsSuccess || currentConfigResponse.Data is null)
+        // Lock the entire read-modify-write sequence
+        await _configMutationLock.WaitAsync(cancellationToken);
+        try
         {
-            _logger.LogError("Unable to retrieve current Pi-hole configuration to remove local DNS records by IP.");
-            return "Unable to retrieve current Pi-hole configuration".ToFailureResponse<EnsureLocalDnsRecordResponse>();
-        }
+            _logger.LogDebug("Acquired config mutation lock for RemoveLocalDnsRecordsByIp: {IpAddress}", ipAddress);
 
-        var currentRecords = currentConfigResponse.Data.Config?.Dns?.Hosts;
-
-        // Check if there are no records
-        if (currentRecords.RecordCount() == 0)
-        {
-            return new PiholeClientApiResponse<EnsureLocalDnsRecordResponse>
+            // Get current configuration (inside lock)
+            var currentConfigResponse = await GetPiholeConfigAsync(detailed: false, cancellationToken).ConfigureAwait(false);
+            if (!currentConfigResponse.IsSuccess || currentConfigResponse.Data is null)
             {
-                IsSuccess = true,
-                Data = new EnsureLocalDnsRecordResponse
+                _logger.LogError("Unable to retrieve current Pi-hole configuration to remove local DNS records by IP.");
+                return "Unable to retrieve current Pi-hole configuration".ToFailureResponse<EnsureLocalDnsRecordResponse>();
+            }
+
+            var currentRecords = currentConfigResponse.Data.Config?.Dns?.Hosts;
+
+            // Check if there are no records
+            if (currentRecords.RecordCount() == 0)
+            {
+                return new PiholeClientApiResponse<EnsureLocalDnsRecordResponse>
                 {
-                    Message = "No DNS records exist",
-                    DataOperation = DataOperation.AlreadyExists
+                    IsSuccess = true,
+                    Data = new EnsureLocalDnsRecordResponse
+                    {
+                        Message = "No DNS records exist",
+                        DataOperation = DataOperation.AlreadyExists
+                    }
+                };
+            }
+
+            // Try to remove records by IP
+            var removeResult = currentRecords.TryRemoveRecordsByIp(ipAddress);
+
+            // If no records were removed, return early
+            if (!removeResult.WasRemoved)
+            {
+                return new PiholeClientApiResponse<EnsureLocalDnsRecordResponse>
+                {
+                    IsSuccess = true,
+                    Data = new EnsureLocalDnsRecordResponse
+                    {
+                        Message = removeResult.Message,
+                        DataOperation = DataOperation.AlreadyExists
+                    }
+                };
+            }
+
+            // Patch the configuration with the updated records
+            var patchRequest = new PiholePatchConfigRequest
+            {
+                Config = new PiholeConfigModel
+                {
+                    Dns = new Dns
+                    {
+                        Hosts = removeResult.UpdatedRecords
+                    }
                 }
             };
-        }
 
-        // Try to remove records by IP
-        var removeResult = currentRecords.TryRemoveRecordsByIp(ipAddress);
+            var patchResponse = await PatchPiholeConfigAsync(patchRequest, restartServices: true, cancellationToken).ConfigureAwait(false);
 
-        // If no records were removed, return early
-        if (!removeResult.WasRemoved)
-        {
+            if (!patchResponse.IsSuccess)
+            {
+                var errorMsg = string.Concat("Failed to patch Pi-hole configuration to remove local DNS records by IP: ", patchResponse.ErrorMessage);
+                return errorMsg.ToFailureResponse<EnsureLocalDnsRecordResponse>();
+            }
+
             return new PiholeClientApiResponse<EnsureLocalDnsRecordResponse>
             {
                 IsSuccess = true,
                 Data = new EnsureLocalDnsRecordResponse
                 {
                     Message = removeResult.Message,
-                    DataOperation = DataOperation.AlreadyExists
+                    DataOperation = DataOperation.Deleted,
+                    RemovedCount = removeResult.RemovedCount,
+                    RemovedDomains = removeResult.RemovedDomains
                 }
             };
         }
-
-        // Patch the configuration with the updated records
-        var patchRequest = new PiholePatchConfigRequest
+        finally
         {
-            Config = new PiholeConfigModel
-            {
-                Dns = new Dns
-                {
-                    Hosts = removeResult.UpdatedRecords
-                }
-            }
-        };
-
-        var patchResponse = await PatchPiholeConfigAsync(patchRequest, restartServices: true, cancellationToken).ConfigureAwait(false);
-
-        if (!patchResponse.IsSuccess)
-        {
-            var errorMsg = string.Concat("Failed to patch Pi-hole configuration to remove local DNS records by IP: ", patchResponse.ErrorMessage);
-            return errorMsg.ToFailureResponse<EnsureLocalDnsRecordResponse>();
+            _configMutationLock.Release();
+            _logger.LogDebug("Released config mutation lock for RemoveLocalDnsRecordsByIp");
         }
-
-        return new PiholeClientApiResponse<EnsureLocalDnsRecordResponse>
-        {
-            IsSuccess = true,
-            Data = new EnsureLocalDnsRecordResponse
-            {
-                Message = removeResult.Message,
-                DataOperation = DataOperation.Deleted,
-                RemovedCount = removeResult.RemovedCount,
-                RemovedDomains = removeResult.RemovedDomains
-            }
-        };
     }
 
     /// <summary>
     /// Removes a specific DNS record (exact match of IP and domain).
     /// Use this when you want to remove only one specific record and there might be duplicates.
+    /// <para>
+    /// This operation is thread-safe. The entire read-modify-write sequence is locked to prevent race conditions.
+    /// </para>
     /// </summary>
     /// <param name="localDnsRecordRequest">The exact DNS record to remove</param>
     /// <param name="cancellationToken">Cancellation token</param>
@@ -411,83 +480,97 @@ public class PiholeConfigClient : IPiholeConfigClient
             return validationResult.ErrorMessage!.ToFailureResponse<EnsureLocalDnsRecordResponse>();
         }
 
-        // Get current configuration
-        var currentConfigResponse = await GetPiholeConfigAsync(detailed: false, cancellationToken).ConfigureAwait(false);
-        if (!currentConfigResponse.IsSuccess || currentConfigResponse.Data is null)
+        // Lock the entire read-modify-write sequence
+        await _configMutationLock.WaitAsync(cancellationToken);
+        try
         {
-            _logger.LogError("Unable to retrieve current Pi-hole configuration to remove local DNS record.");
-            return "Unable to retrieve current Pi-hole configuration".ToFailureResponse<EnsureLocalDnsRecordResponse>();
-        }
+            _logger.LogDebug("Acquired config mutation lock for RemoveLocalDnsRecord: {Domain} -> {IpAddress}", 
+                localDnsRecordRequest.Domain, localDnsRecordRequest.IpAddress);
 
-        var currentRecords = currentConfigResponse.Data.Config?.Dns?.Hosts;
-
-        // Check if there are no records
-        if (currentRecords.RecordCount() == 0)
-        {
-            return new PiholeClientApiResponse<EnsureLocalDnsRecordResponse>
+            // Get current configuration (inside lock)
+            var currentConfigResponse = await GetPiholeConfigAsync(detailed: false, cancellationToken).ConfigureAwait(false);
+            if (!currentConfigResponse.IsSuccess || currentConfigResponse.Data is null)
             {
-                IsSuccess = true,
-                Data = new EnsureLocalDnsRecordResponse
+                _logger.LogError("Unable to retrieve current Pi-hole configuration to remove local DNS record.");
+                return "Unable to retrieve current Pi-hole configuration".ToFailureResponse<EnsureLocalDnsRecordResponse>();
+            }
+
+            var currentRecords = currentConfigResponse.Data.Config?.Dns?.Hosts;
+
+            // Check if there are no records
+            if (currentRecords.RecordCount() == 0)
+            {
+                return new PiholeClientApiResponse<EnsureLocalDnsRecordResponse>
                 {
-                    Message = "No DNS records exist",
-                    DataOperation = DataOperation.AlreadyExists
+                    IsSuccess = true,
+                    Data = new EnsureLocalDnsRecordResponse
+                    {
+                        Message = "No DNS records exist",
+                        DataOperation = DataOperation.AlreadyExists
+                    }
+                };
+            }
+
+            // Try to remove the specific record
+            var removeResult = currentRecords.TryRemoveSpecificRecord(
+                localDnsRecordRequest.IpAddress, 
+                localDnsRecordRequest.Domain);
+
+            // If record wasn't found, return early
+            if (!removeResult.WasRemoved)
+            {
+                return new PiholeClientApiResponse<EnsureLocalDnsRecordResponse>
+                {
+                    IsSuccess = true,
+                    Data = new EnsureLocalDnsRecordResponse
+                    {
+                        Message = removeResult.Message,
+                        DataOperation = DataOperation.AlreadyExists
+                    }
+                };
+            }
+
+            // Patch the configuration with the updated records
+            var patchRequest = new PiholePatchConfigRequest
+            {
+                Config = new PiholeConfigModel
+                {
+                    Dns = new Dns
+                    {
+                        Hosts = removeResult.UpdatedRecords
+                    }
                 }
             };
-        }
 
-        // Try to remove the specific record
-        var removeResult = currentRecords.TryRemoveSpecificRecord(
-            localDnsRecordRequest.IpAddress, 
-            localDnsRecordRequest.Domain);
+            var patchResponse = await PatchPiholeConfigAsync(patchRequest, restartServices: true, cancellationToken).ConfigureAwait(false);
 
-        // If record wasn't found, return early
-        if (!removeResult.WasRemoved)
-        {
+            if (!patchResponse.IsSuccess)
+            {
+                var errorMsg = string.Concat("Failed to patch Pi-hole configuration to remove local DNS record: ", patchResponse.ErrorMessage);
+                return errorMsg.ToFailureResponse<EnsureLocalDnsRecordResponse>();
+            }
+
             return new PiholeClientApiResponse<EnsureLocalDnsRecordResponse>
             {
                 IsSuccess = true,
                 Data = new EnsureLocalDnsRecordResponse
                 {
                     Message = removeResult.Message,
-                    DataOperation = DataOperation.AlreadyExists
+                    DataOperation = DataOperation.Deleted
                 }
             };
         }
-
-        // Patch the configuration with the updated records
-        var patchRequest = new PiholePatchConfigRequest
+        finally
         {
-            Config = new PiholeConfigModel
-            {
-                Dns = new Dns
-                {
-                    Hosts = removeResult.UpdatedRecords
-                }
-            }
-        };
-
-        var patchResponse = await PatchPiholeConfigAsync(patchRequest, restartServices: true, cancellationToken).ConfigureAwait(false);
-
-        if (!patchResponse.IsSuccess)
-        {
-            var errorMsg = string.Concat("Failed to patch Pi-hole configuration to remove local DNS record: ", patchResponse.ErrorMessage);
-            return errorMsg.ToFailureResponse<EnsureLocalDnsRecordResponse>();
+            _configMutationLock.Release();
+            _logger.LogDebug("Released config mutation lock for RemoveLocalDnsRecord");
         }
-
-        return new PiholeClientApiResponse<EnsureLocalDnsRecordResponse>
-        {
-            IsSuccess = true,
-            Data = new EnsureLocalDnsRecordResponse
-            {
-                Message = removeResult.Message,
-                DataOperation = DataOperation.Deleted
-            }
-        };
     }
 
 
     /// <summary>
     /// Validates the current local DNS configuration and returns the result of the validation operation.
+    /// This is a read-only operation and does not require locking.
     /// </summary>
     /// <param name="cancellationToken">A cancellation token that can be used to cancel the validation operation.</param>
     /// <returns>A task that represents the asynchronous operation. The task result contains a <see
