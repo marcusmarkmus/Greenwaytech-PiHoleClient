@@ -32,7 +32,7 @@ public interface IPiholeConfigClient
     /// Do a GetPiholeConfigAsync first to retrieve existing lists/arrays if you want to append to them.
     /// </summary>
     /// <param name="patchRequest"></param>
-    /// <param name="restartServices">Restart FTL after a change </param>
+    /// <param name="restartServices">Restart FTL after a change</param>
     /// <param name="cancellationToken"></param>
     /// <returns></returns>
     Task<PiholeClientApiResponse<PiholeGetConfigResponse>> PatchPiholeConfigAsync(PiholePatchConfigRequest patchRequest, bool restartServices = true, CancellationToken cancellationToken = default);

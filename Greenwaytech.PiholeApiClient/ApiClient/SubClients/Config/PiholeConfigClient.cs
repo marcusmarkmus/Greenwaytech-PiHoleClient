@@ -1,4 +1,4 @@
-using Greenwaytech.PiholeApiClient.Model.App;
+﻿using Greenwaytech.PiholeApiClient.Model.App;
 using Greenwaytech.PiholeApiClient.Model.App.Request;
 using Greenwaytech.PiholeApiClient.Model.App.Response;
 using Greenwaytech.PiholeApiClient.Model.Pihole;
@@ -9,6 +9,37 @@ using System.Text.Json;
 using Greenwaytech.PiholeApiClient.Extensions;
 
 namespace Greenwaytech.PiholeApiClient.ApiClient.SubClients.Config;
+
+/// <summary>
+/// Provides methods for managing Pi-hole configuration including DNS records and other settings.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <strong>Thread Safety:</strong> This class is thread-safe for concurrent operations within a single instance.
+/// All configuration mutation methods (EnsureLocalDnsRecord, RemoveLocalDnsRecord*, etc.) use internal locking
+/// to ensure that read-modify-write sequences are properly serialized, preventing race conditions and lost updates.
+/// </para>
+/// <para>
+/// <strong>Important Limitation:</strong> Thread safety is guaranteed ONLY when using the SAME client instance.
+/// If you create multiple client instances for the same Pi-hole server and perform concurrent operations across
+/// those instances, race conditions may still occur because each instance has its own lock.
+/// </para>
+/// <para>
+/// <strong>Safe Usage Patterns:</strong>
+/// - Single client instance with concurrent operations ✓
+/// - Scoped/Singleton client lifetime ✓
+/// - Sequential operations even with multiple instances ✓
+/// </para>
+/// <para>
+/// <strong>Unsafe Usage Patterns:</strong>
+/// - Multiple transient clients in Parallel.ForEach ✗
+/// - Concurrent operations across different client instances ✗
+/// </para>
+/// <para>
+/// The library will log a warning if it detects multiple client registrations for the same Pi-hole instance.
+/// For advanced multi-instance scenarios, consider using the factory pattern with proper external coordination.
+/// </para>
+/// </remarks>
 public class PiholeConfigClient : IPiholeConfigClient
 { 
     private readonly HttpClient _httpClient;
@@ -467,7 +498,8 @@ public class PiholeConfigClient : IPiholeConfigClient
     /// <param name="localDnsRecordRequest">The exact DNS record to remove</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Response indicating if the specific record was removed</returns>
-    public async Task<PiholeClientApiResponse<EnsureLocalDnsRecordResponse>> RemoveLocalDnsRecord(
+    public async Task<PiholeClientApiResponse<EnsureLocalDnsRecordResponse>> 
+        RemoveLocalDnsRecord(
         LocalDnsRecordRequest localDnsRecordRequest, 
         CancellationToken cancellationToken = default)
     {
@@ -542,7 +574,7 @@ public class PiholeConfigClient : IPiholeConfigClient
                 }
             };
 
-            var patchResponse = await PatchPiholeConfigAsync(patchRequest, restartServices: true, cancellationToken).ConfigureAwait(false);
+            var patchResponse = await PatchPiholeConfigAsync(patchRequest, restartServices: false, cancellationToken).ConfigureAwait(false);
 
             if (!patchResponse.IsSuccess)
             {
