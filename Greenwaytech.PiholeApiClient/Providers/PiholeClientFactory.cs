@@ -15,6 +15,13 @@ public class PiholeClientFactory : IPiholeClientFactory
     
     // Cache session providers per Pi-hole instance to enable session reuse across multiple client creations
     private readonly ConcurrentDictionary<string, IPiholeSessionProvider> _sessionProviders = new();
+    
+    /// <summary>
+    /// Cache of API client instances per Pi-hole instance.
+    /// This ensures the same client instance (with its internal lock) is reused for the same Pi-hole,
+    /// preventing race conditions during concurrent configuration mutations.
+    /// </summary>
+    private readonly ConcurrentDictionary<string, IPiholeApiClientService> _clientCache = new();
 
     public PiholeClientFactory(ILoggerFactory loggerFactory, IHttpClientFactory httpClientFactory)
     {
@@ -32,6 +39,12 @@ public class PiholeClientFactory : IPiholeClientFactory
         // Create a unique cache key for this Pi-hole instance (URL + API key combination)
         var cacheKey = $"{piHoleInstanceApiConfig.ApiBaseUrl.TrimEnd('/')}|{piHoleInstanceApiConfig.ApiKey}";
         
+        // Return cached client if exists - this ensures the same lock is used for concurrent operations
+        return _clientCache.GetOrAdd(cacheKey, _ => CreateClientInternal(piHoleInstanceApiConfig, cacheKey));
+    }
+
+    private IPiholeApiClientService CreateClientInternal(IPiHoleInstanceApiConfig piHoleInstanceApiConfig, string cacheKey)
+    {
         // Get or create a session provider for this specific Pi-hole instance
         var sessionProvider = _sessionProviders.GetOrAdd(cacheKey, _ =>
         {
@@ -71,6 +84,7 @@ public class PiholeClientFactory : IPiholeClientFactory
         };
         var clientOptions = Options.Create(clientConfig);
 
+        logger.LogInformation("Created new API client for Pi-hole instance: {BaseUrl}", piHoleInstanceApiConfig.ApiBaseUrl);
         return new PiholeApiClientService(httpClient, logger, clientOptions);
     }
 

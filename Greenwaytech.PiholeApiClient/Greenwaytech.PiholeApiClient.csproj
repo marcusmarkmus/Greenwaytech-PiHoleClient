@@ -9,7 +9,7 @@
 	<PropertyGroup>
 		<!-- NuGet Package Metadata -->
 		<PackageId>Greenwaytech.PiholeApiClient</PackageId>
-		<Version>0.1.8</Version>
+		<Version>0.1.9</Version>
 		<Authors>Marcus Greenway</Authors>
 		<Description>.NET Client for Pi-hole API</Description>
 		<Copyright>Greenwaytech 2026</Copyright>

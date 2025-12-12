@@ -24,6 +24,12 @@ public class PiholeConfigClient : IPiholeConfigClient
     private const string FalseString = "false";
 
     /// <summary>
+    /// Timeout for acquiring the configuration mutation lock.
+    /// This prevents indefinite waits if something goes wrong with a previous operation.
+    /// </summary>
+    private static readonly TimeSpan LockTimeout = TimeSpan.FromSeconds(30);
+
+    /// <summary>
     /// Semaphore to serialize ALL configuration mutations per Pi-hole instance.
     /// This prevents race conditions where multiple concurrent operations perform read-modify-write sequences.
     /// IMPORTANT: The entire read-modify-write cycle must be locked, not just the write operation.
@@ -173,7 +179,11 @@ public class PiholeConfigClient : IPiholeConfigClient
         }
 
         // Lock the entire read-modify-write sequence to prevent race conditions
-        await _configMutationLock.WaitAsync(cancellationToken);
+        if (!await _configMutationLock.WaitAsync(LockTimeout, cancellationToken).ConfigureAwait(false))
+        {
+            _logger.LogError("Timeout waiting for config mutation lock in EnsureLocalDnsRecord: {Domain}", localDnsRecordRequest.Domain);
+            return "Configuration operation timed out waiting for lock".ToFailureResponse<EnsureLocalDnsRecordResponse>();
+        }
         try
         {
             _logger.LogDebug("Acquired config mutation lock for EnsureLocalDnsRecord: {Domain}", localDnsRecordRequest.Domain);
@@ -268,7 +278,11 @@ public class PiholeConfigClient : IPiholeConfigClient
         }
 
         // Lock the entire read-modify-write sequence
-        await _configMutationLock.WaitAsync(cancellationToken);
+        if (!await _configMutationLock.WaitAsync(LockTimeout, cancellationToken).ConfigureAwait(false))
+        {
+            _logger.LogError("Timeout waiting for config mutation lock in RemoveLocalDnsRecordsByDomain: {Domain}", domain);
+            return "Configuration operation timed out waiting for lock".ToFailureResponse<EnsureLocalDnsRecordResponse>();
+        }
         try
         {
             _logger.LogDebug("Acquired config mutation lock for RemoveLocalDnsRecordsByDomain: {Domain}", domain);
@@ -372,7 +386,11 @@ public class PiholeConfigClient : IPiholeConfigClient
         }
 
         // Lock the entire read-modify-write sequence
-        await _configMutationLock.WaitAsync(cancellationToken);
+        if (!await _configMutationLock.WaitAsync(LockTimeout, cancellationToken).ConfigureAwait(false))
+        {
+            _logger.LogError("Timeout waiting for config mutation lock in RemoveLocalDnsRecordsByIp: {IpAddress}", ipAddress);
+            return "Configuration operation timed out waiting for lock".ToFailureResponse<EnsureLocalDnsRecordResponse>();
+        }
         try
         {
             _logger.LogDebug("Acquired config mutation lock for RemoveLocalDnsRecordsByIp: {IpAddress}", ipAddress);
@@ -481,7 +499,12 @@ public class PiholeConfigClient : IPiholeConfigClient
         }
 
         // Lock the entire read-modify-write sequence
-        await _configMutationLock.WaitAsync(cancellationToken);
+        if (!await _configMutationLock.WaitAsync(LockTimeout, cancellationToken).ConfigureAwait(false))
+        {
+            _logger.LogError("Timeout waiting for config mutation lock in RemoveLocalDnsRecord: {Domain} -> {IpAddress}", 
+                localDnsRecordRequest.Domain, localDnsRecordRequest.IpAddress);
+            return "Configuration operation timed out waiting for lock".ToFailureResponse<EnsureLocalDnsRecordResponse>();
+        }
         try
         {
             _logger.LogDebug("Acquired config mutation lock for RemoveLocalDnsRecord: {Domain} -> {IpAddress}", 

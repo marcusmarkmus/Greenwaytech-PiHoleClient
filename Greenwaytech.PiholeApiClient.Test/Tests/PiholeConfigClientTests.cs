@@ -899,6 +899,63 @@ public class PiholeConfigClientTests
             "DNS configuration should be internally consistent");
     }
 
+    [Test, Order(106)]
+    public void Concurrency_CancellationToken_RespectsCancellation()
+    {
+        // Arrange
+        var cut = GeneratePiholeApiClientService();
+        var testDomain = $"timeout-test-{Guid.NewGuid():N}.local";
+        var testIp = "192.168.204.1";
+        
+        // Create a pre-cancelled token
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        // Act & Assert - Should throw some form of cancellation exception
+        var request = new LocalDnsRecordRequest { Domain = testDomain, IpAddress = testIp };
+        
+        // TaskCanceledException inherits from OperationCanceledException, so check for both
+        var exception = Assert.CatchAsync<Exception>(async () => 
+            await cut.Config.EnsureLocalDnsRecord(request, cts.Token));
+        
+        Assert.That(exception, Is.InstanceOf<OperationCanceledException>()
+            .Or.InstanceOf<TaskCanceledException>(),
+            "Should throw a cancellation-related exception when token is cancelled");
+    }
+
+    [Test, Order(107)]
+    [RequiresBaselineRestore]
+    public async Task Concurrency_SequentialOperations_ShouldAllSucceed()
+    {
+        // This test verifies that the lock doesn't cause deadlocks under normal sequential operation
+        var cut = GeneratePiholeApiClientService();
+        var testDomain = $"sequential-{Guid.NewGuid():N}.local";
+        var testIp = "192.168.204.2";
+
+        // Act: Perform multiple sequential operations that all acquire the lock
+        var addResult = await cut.Config.EnsureLocalDnsRecord(new LocalDnsRecordRequest 
+        { 
+            Domain = testDomain, 
+            IpAddress = testIp 
+        });
+        
+        var getResult = await cut.Config.GetPiholeConfigAsync();
+        
+        var removeResult = await cut.Config.RemoveLocalDnsRecordsByDomain(testDomain);
+        
+        var addAgainResult = await cut.Config.EnsureLocalDnsRecord(new LocalDnsRecordRequest 
+        { 
+            Domain = testDomain, 
+            IpAddress = testIp 
+        });
+
+        // Assert: All operations should succeed
+        Assert.That(addResult.IsSuccess, Is.True, "Initial add should succeed");
+        Assert.That(getResult.IsSuccess, Is.True, "Get should succeed");
+        Assert.That(removeResult.IsSuccess, Is.True, "Remove should succeed");
+        Assert.That(addAgainResult.IsSuccess, Is.True, "Add after remove should succeed");
+    }
+
     #endregion
 
     private IPiholeApiClientService GeneratePiholeApiClientService()
