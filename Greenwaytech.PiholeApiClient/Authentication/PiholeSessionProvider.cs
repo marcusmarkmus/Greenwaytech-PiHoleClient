@@ -95,4 +95,48 @@ internal class PiholeSessionProvider : IPiholeSessionProvider
     {
         return GetValidSessionAsync();
     }
+
+    public void Dispose()
+    {
+        if (_cachedSession == null || !_cachedSession.IsValid())
+            return;
+        
+        _authLock.Wait();
+        try
+        {
+            if (_cachedSession == null || !_cachedSession.IsValid())
+                return;
+
+            using var request = new HttpRequestMessage(HttpMethod.Delete, "/api/auth");
+            request.Headers.Add("sid", _cachedSession.Sid);
+            _httpClient.Send(request);
+            _cachedSession = null;
+        }
+        finally
+        {
+            _authLock.Release();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_cachedSession == null || !_cachedSession.IsValid())
+            return;
+        
+        await _authLock.WaitAsync();
+        try
+        {
+            if (_cachedSession == null || !_cachedSession.IsValid())
+                return;
+
+            using var request = new HttpRequestMessage(HttpMethod.Delete, "/api/auth");
+            request.Headers.Add("sid", _cachedSession.Sid);
+            await _httpClient.SendAsync(request);
+            _cachedSession = null;
+        }
+        finally
+        {
+            _authLock.Release();
+        }
+    }
 }
