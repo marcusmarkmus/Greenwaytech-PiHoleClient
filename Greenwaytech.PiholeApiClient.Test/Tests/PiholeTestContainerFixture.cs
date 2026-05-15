@@ -43,7 +43,7 @@ public class PiholeTestContainerFixture
     /// Starts the Pi-hole test container once before any tests run.
     /// </summary>
     [OneTimeSetUp]
-    public async Task GlobalSetup()
+    public static async Task GlobalSetup()
     {
         // All tests use the same container instance for speed - but be aware that tests may affect each other due to shared state.
         var container = PiholeTestInstanceProvider.BuildPiholeTestContainer();
