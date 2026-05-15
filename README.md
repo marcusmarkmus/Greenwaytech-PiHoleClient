@@ -15,8 +15,10 @@ Appsettings.json configuration example:
   }
 }
 
-### Dependency Injection
 ```
+
+### Dependency Injection  
+
 DI registration example, single client:
 
 ```csharp
