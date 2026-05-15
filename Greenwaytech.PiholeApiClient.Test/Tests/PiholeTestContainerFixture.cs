@@ -1,6 +1,5 @@
 using DotNet.Testcontainers.Containers;
 using Greenwaytech.PiholeApiClient.ApiClient;
-using Greenwaytech.PiholeApiClient.Model.Configuration;
 using Greenwaytech.PiholeApiClient.Test.Extensions;
 using Greenwaytech.PiholeApiClient.Test.Providers;
 using Microsoft.Extensions.DependencyInjection;
@@ -23,7 +22,7 @@ public class PiholeTestContainerFixture
     /// <summary>
     /// Shared container instance used by all test classes.
     /// </summary>
-    public static IContainer Container { get; private set; } = null!;
+    public static IContainer? Container { get; private set; }
 
     /// <summary>
     /// Base URL for the Pi-hole test container API.
@@ -47,12 +46,13 @@ public class PiholeTestContainerFixture
     public async Task GlobalSetup()
     {
         // All tests use the same container instance for speed - but be aware that tests may affect each other due to shared state.
-        Container = PiholeTestInstanceProvider.BuildPiholeTestContainer();
+        var container = PiholeTestInstanceProvider.BuildPiholeTestContainer();
 
-        await Container.StartAsync()
+        await container.StartAsync()
           .ConfigureAwait(false);
 
-        BaseUrl = Container.GetPiholeTestContainerBaseUrl(PiholeTestInstanceProvider.PiholePort);
+        Container = container;
+        BaseUrl = container.GetPiholeTestContainerBaseUrl(PiholeTestInstanceProvider.PiholePort);
 
         // Small delay to ensure all background services are fully initialized
         await Task.Delay(5000);
@@ -87,8 +87,8 @@ public class PiholeTestContainerFixture
     public static async Task RestoreBaselineIfNeeded()
     {
         // Check if current test needs baseline restore
-        var currentTest = TestContext.CurrentContext.Test;
-        var needsRestore = currentTest?.Method?.GetCustomAttributes<RequiresBaselineRestoreAttribute>(true).Length > 0;
+        var currentMethod = TestContext.CurrentContext.Test.Method;
+        var needsRestore = currentMethod?.GetCustomAttributes<RequiresBaselineRestoreAttribute>(true).Length > 0;
 
         if (!needsRestore)
         {
@@ -124,8 +124,8 @@ public class PiholeTestContainerFixture
     /// </summary>
     public static async Task CleanupAfterModifyingTest()
     {
-        var currentTest = TestContext.CurrentContext.Test;
-        var needsRestore = currentTest?.Method?.GetCustomAttributes<RequiresBaselineRestoreAttribute>(true).Length > 0;
+        var currentMethod = TestContext.CurrentContext.Test.Method;
+        var needsRestore = currentMethod?.GetCustomAttributes<RequiresBaselineRestoreAttribute>(true).Length > 0;
 
         if (needsRestore)
         {
@@ -140,15 +140,20 @@ public class PiholeTestContainerFixture
     [OneTimeTearDown]
     public async Task GlobalTeardown()
     {
-        if (ServiceProvider is IDisposable disposable)
+        if (ServiceProvider is IAsyncDisposable asyncDisposable)
+        {
+            await asyncDisposable.DisposeAsync();
+        }
+        else if (ServiceProvider is IDisposable disposable)
         {
             disposable.Dispose();
         }
 
-        if (Container is not null)
+        if (Container is { } container)
         {
-            await Container.StopAsync();
-            await Container.DisposeAsync();
+            await container.StopAsync();
+            await container.DisposeAsync();
         }
     }
 }
+

@@ -59,10 +59,8 @@ internal class PiholeSessionProvider : IPiholeSessionProvider
 
             _logger.LogInformation("Authenticating with Pi-hole API at {BaseUrl}", _config.ApiBaseUrl);
             
-            using var request = new HttpRequestMessage(HttpMethod.Post, "/api/auth")
-            {
-                Content = new StringContent($"{{\"password\":\"{_config.ApiKey}\"}}", Encoding.UTF8, "application/json")
-            };
+            using var request = new HttpRequestMessage(HttpMethod.Post, "/api/auth");
+            request.Content = new StringContent($"{{\"password\":\"{_config.ApiKey}\"}}", Encoding.UTF8, "application/json");
 
             var response = await _httpClient.SendAsync(request);
             if (!response.IsSuccessStatusCode)
@@ -109,7 +107,23 @@ internal class PiholeSessionProvider : IPiholeSessionProvider
 
             using var request = new HttpRequestMessage(HttpMethod.Delete, "/api/auth");
             request.Headers.Add("sid", _cachedSession.Sid);
-            _httpClient.Send(request);
+            try
+            {
+                _httpClient.Send(request);
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogWarning(ex, "Failed to logout Pi-hole session during disposal.");
+            }
+            catch (IOException ex)
+            {
+                _logger.LogWarning(ex, "Connection failed while logging out Pi-hole session during disposal.");
+            }
+            catch (OperationCanceledException ex)
+            {
+                _logger.LogWarning(ex, "Pi-hole logout was canceled during disposal.");
+            }
+
             _cachedSession = null;
         }
         finally
@@ -131,7 +145,23 @@ internal class PiholeSessionProvider : IPiholeSessionProvider
 
             using var request = new HttpRequestMessage(HttpMethod.Delete, "/api/auth");
             request.Headers.Add("sid", _cachedSession.Sid);
-            await _httpClient.SendAsync(request);
+            try
+            {
+                await _httpClient.SendAsync(request).ConfigureAwait(false);
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogWarning(ex, "Failed to logout Pi-hole session during async disposal.");
+            }
+            catch (IOException ex)
+            {
+                _logger.LogWarning(ex, "Connection failed while logging out Pi-hole session during async disposal.");
+            }
+            catch (OperationCanceledException ex)
+            {
+                _logger.LogWarning(ex, "Pi-hole logout was canceled during async disposal.");
+            }
+
             _cachedSession = null;
         }
         finally
