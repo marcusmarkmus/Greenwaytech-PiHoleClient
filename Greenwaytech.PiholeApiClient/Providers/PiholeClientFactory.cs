@@ -90,4 +90,16 @@ public class PiholeClientFactory : IPiholeClientFactory
 
     public IPiholeApiClientService CreateClient(PiholeNode node) 
         => CreateClient(node.Config);
+
+    public void Dispose()
+    {
+        foreach (IPiholeSessionProvider sessionProvider in _sessionProviders.Values)
+            sessionProvider.Dispose();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        foreach (IPiholeSessionProvider sessionProvider in _sessionProviders.Values)
+            await sessionProvider.DisposeAsync();
+    }
 }
